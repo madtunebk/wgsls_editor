@@ -2,6 +2,7 @@
 name = "egui_two_windows"
 version = "0.1.0"
 edition = "2021"
+default-run = "egui_two_windows"
 
 [dependencies]
 # eframe/egui latest compatible with code editor
