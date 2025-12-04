@@ -90,7 +90,6 @@ struct TopApp {
     // UI state
     show_error_popup: bool,
     toast_mgr: ToastManager,
-    show_scale_popup: bool,
 
     // Cached syntax layout to avoid re-tokenizing every frame
     fragment_job: Option<egui::text::LayoutJob>,
@@ -124,7 +123,6 @@ impl TopApp {
             editor_font_size: 18.0,
             show_error_popup: false,
             toast_mgr: ToastManager::new(),
-            show_scale_popup: false,
 
             fragment_job: None,
             fragment_cached_src: String::new(),
@@ -279,11 +277,33 @@ impl eframe::App for TopApp {
                             #[cfg(feature = "code_editor")]
                             {
                                 // Use egui-code-editor when the feature is enabled
-                                ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
+                                let editor_resp = ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
                                     egui_code_editor::CodeEditor::default()
                                         .id_source("fragment_editor")
                                         .show(ui_alloc, &mut self.fragment);
-                                });
+                                }).response;
+                                // Overlay gear in top-right
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("fragment_scale_menu"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_menu| {
+                                        ui_menu.label("Editor scale");
+                                        let mut s = self.ui_scale;
+                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                            self.ui_scale = s;
+                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                            let ctx = ui_menu.ctx();
+                                            let mut style = (*ctx.style()).clone();
+                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                            ctx.set_style(style);
+                                        }
+                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                    }) { }
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
@@ -298,7 +318,29 @@ impl eframe::App for TopApp {
                                     .frame(false)
                                     .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
                                     .layouter(&mut fragment_layouter);
-                                ui_inner.add_sized(desired, te);
+                                let editor_resp = ui_inner.add_sized(desired, te);
+                                // Overlay gear
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("fragment_scale_menu"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_menu| {
+                                        ui_menu.label("Editor scale");
+                                        let mut s = self.ui_scale;
+                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                            self.ui_scale = s;
+                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                            let ctx = ui_menu.ctx();
+                                            let mut style = (*ctx.style()).clone();
+                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                            ctx.set_style(style);
+                                        }
+                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                    }) { }
                             }
                         });
                     });
@@ -310,11 +352,32 @@ impl eframe::App for TopApp {
                             let desired = egui::Vec2::new(width, editor_h);
                             #[cfg(feature = "code_editor")]
                             {
-                                ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
+                                let editor_resp = ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
                                     egui_code_editor::CodeEditor::default()
                                         .id_source("vertex_editor")
                                         .show(ui_alloc, &mut self.vertex);
-                                });
+                                }).response;
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("vertex_scale_menu"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_menu| {
+                                        ui_menu.label("Editor scale");
+                                        let mut s = self.ui_scale;
+                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                            self.ui_scale = s;
+                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                            let ctx = ui_menu.ctx();
+                                            let mut style = (*ctx.style()).clone();
+                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                            ctx.set_style(style);
+                                        }
+                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                    }) { }
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
@@ -328,7 +391,28 @@ impl eframe::App for TopApp {
                                     .frame(false)
                                     .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
                                     .layouter(&mut vertex_layouter);
-                                ui_inner.add_sized(desired, te);
+                                let editor_resp = ui_inner.add_sized(desired, te);
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("vertex_scale_menu"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_menu| {
+                                        ui_menu.label("Editor scale");
+                                        let mut s = self.ui_scale;
+                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                            self.ui_scale = s;
+                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                            let ctx = ui_menu.ctx();
+                                            let mut style = (*ctx.style()).clone();
+                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                            ctx.set_style(style);
+                                        }
+                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                    }) { }
                             }
                         });
                     });
@@ -363,14 +447,29 @@ impl eframe::App for TopApp {
                 }
             });
 
-            // Compact settings icon to toggle scale popup
+            // Compact settings icon with popup
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let icon = egui::RichText::new("⚙").size((self.editor_font_size * 0.9).clamp(14.0, 22.0));
-                let btn = egui::Button::new(icon).frame(true);
-                if ui.add(btn).on_hover_text("Editor scale & font size").clicked() {
-                    self.show_scale_popup = !self.show_scale_popup;
-                }
+                let resp = ui.add(egui::Button::new(icon).frame(true)).on_hover_text("Editor scale & font size");
+                // Popup anchored to the gear button
+                if let Some(mut popup) = egui::Popup::menu(&resp)
+                    .id(egui::Id::new("editor_scale_menu"))
+                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                    .show(|ui_menu| {
+                        ui_menu.label("Editor scale");
+                        let mut s = self.ui_scale;
+                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                            self.ui_scale = s;
+                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                            let ctx = ui_menu.ctx();
+                            let mut style = (*ctx.style()).clone();
+                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                            ctx.set_style(style);
+                        }
+                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                    })
+                { let _ = popup; }
                 ui.label(format!("{:.0} px", self.editor_font_size));
             });
         });
@@ -425,27 +524,7 @@ impl eframe::App for TopApp {
             self.toast_mgr.render(ui);
         });
 
-        // Scale settings popup window (minimal)
-        if self.show_scale_popup {
-            egui::Window::new("Editor Settings")
-                .resizable(false)
-                .collapsible(false)
-                .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(12.0, -12.0))
-                .show(ctx, |ui| {
-                    ui.label("Editor scale");
-                    let mut s = self.ui_scale;
-                    if ui.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
-                        self.ui_scale = s;
-                        self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
-                        let ctx = ui.ctx();
-                        let mut style = (*ctx.style()).clone();
-                        style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                        ctx.set_style(style);
-                    }
-                    ui.label(format!("Font: {:.0} px", self.editor_font_size));
-                    if ui.button("Close").clicked() { self.show_scale_popup = false; }
-                });
-        }
+        // (no detached settings window; scale menu is a popup anchored to the gear button)
 
         ctx.request_repaint();
     }
