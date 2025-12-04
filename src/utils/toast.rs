@@ -97,6 +97,12 @@ impl ToastManager {
             }
         }
     }
+    
+    pub fn dismiss_all(&mut self) {
+        for t in &mut self.toasts {
+            t.dismissed = true;
+        }
+    }
 
     pub fn render(&mut self, ui: &mut egui::Ui) {
         self.toasts.retain(|t| !t.is_expired() && !t.dismissed);
@@ -109,11 +115,19 @@ impl ToastManager {
         for toast in &mut self.toasts {
             // Size presets
             let base_w = match toast.toast_type {
-                ToastType::Error => 720.0,
+                ToastType::Error => 900.0,  // Wider for error messages
                 _ => 520.0,
             };
+            
+            // Calculate height based on message length for errors
             let base_h = match toast.toast_type {
-                ToastType::Error => 280.0,
+                ToastType::Error => {
+                    let line_count = toast.message.lines().count().max(1);
+                    let min_h = 200.0;
+                    let max_h = 600.0;
+                    let calculated_h = (line_count as f32 * 20.0 + 80.0).clamp(min_h, max_h);
+                    calculated_h
+                }
                 _ => 80.0,
             };
             let mut rect = Rect::from_center_size(screen_rect.center(), Vec2::new(base_w, base_h));
@@ -172,29 +186,32 @@ impl ToastManager {
             ui_in.vertical(|ui_col| {
                 ui_col.horizontal(|ui_row| {
                     let title = match toast.toast_type {
-                        ToastType::Error => "WGSL Error",
-                        ToastType::Success => "Success",
-                        ToastType::Info => "Info",
+                        ToastType::Error => "⚠ WGSL Compilation Error",
+                        ToastType::Success => "✓ Success",
+                        ToastType::Info => "ℹ Info",
                     };
                     ui_row.strong(title);
                     ui_row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui_r| {
-                        if ui_r.small_button("✕").clicked() {
+                        if ui_r.button("✕").clicked() {
                             toast.dismissed = true;
                         }
                     });
                 });
+                ui_col.add_space(4.0);
+                
                 let mut text = egui::RichText::new(&toast.message);
                 if let ToastType::Error = toast.toast_type {
                     text = text
-                        .family(egui::FontFamily::Name("RobotoMono".into()))
-                        .color(visuals.error_fg_color)
-                        .size(14.0);
+                        .family(egui::FontFamily::Monospace)
+                        .color(Color32::from_rgb(255, 180, 180))
+                        .size(13.0);
                 }
-                let max_h = (inner.height() - 28.0).max(60.0);
+                let max_h = (inner.height() - 40.0).max(100.0);
                 egui::ScrollArea::vertical()
                     .max_height(max_h)
+                    .auto_shrink([false, false])
                     .show(ui_col, |ui_body| {
-                        ui_body.add(egui::Label::new(text).wrap());
+                        ui_body.add(egui::Label::new(text).wrap().selectable(true));
                     });
             });
         }

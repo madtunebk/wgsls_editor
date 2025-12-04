@@ -1,5 +1,7 @@
 // theme.rs - Dark theme for WGSL Shader Editor
-use eframe::egui::{self, Color32, Context, Visuals, Margin, CornerRadius, Stroke, FontId, FontFamily};
+use eframe::egui::{
+    self, Color32, Context, CornerRadius, FontFamily, FontId, Margin, Stroke, Visuals,
+};
 
 /// Apply dark theme optimized for code editor
 pub fn apply_editor_theme(ctx: &Context) {
@@ -8,7 +10,7 @@ pub fn apply_editor_theme(ctx: &Context) {
 
     // Editor dark background
     style.visuals.window_fill = Color32::from_rgb(20, 20, 24);
-    style.visuals.panel_fill  = Color32::from_rgb(20, 20, 24);
+    style.visuals.panel_fill = Color32::from_rgb(20, 20, 24);
     style.visuals.extreme_bg_color = Color32::from_rgb(12, 12, 14);
     style.visuals.code_bg_color = Color32::from_rgb(16, 16, 18);
 
@@ -25,7 +27,7 @@ pub fn apply_editor_theme(ctx: &Context) {
 
     // Default font
     style.override_font_id = Some(FontId::new(14.0, FontFamily::Proportional));
-    
+
     ctx.set_style(style);
 }
 
@@ -36,7 +38,7 @@ pub fn apply_viewer_theme(ctx: &Context) {
 
     // Pure black background for shader preview
     style.visuals.window_fill = Color32::from_rgb(0, 0, 0);
-    style.visuals.panel_fill  = Color32::from_rgb(0, 0, 0);
+    style.visuals.panel_fill = Color32::from_rgb(0, 0, 0);
     style.visuals.extreme_bg_color = Color32::from_rgb(0, 0, 0);
 
     // Minimal UI elements

@@ -17,6 +17,7 @@ type-map = "0.4"
 regex = "1.10"
 cpal = "0.15"
 rustfft = "6.2"
+naga = { version = "27", features = ["wgsl-in"] }
 
 [features]
 default = []

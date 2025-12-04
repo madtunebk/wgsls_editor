@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::utils::ShaderError;
 use eframe::epaint;
-use eframe::wgpu::{Device, RenderPipeline, Buffer, BindGroup};
+use eframe::wgpu::{BindGroup, Buffer, Device, RenderPipeline};
 
 // Shader uniforms structure
 #[repr(C)]
@@ -25,17 +26,80 @@ pub struct ShaderPipeline {
 }
 
 impl ShaderPipeline {
-    pub fn new(device: &Device, format: egui_wgpu::wgpu::TextureFormat, wgsl_src: &str) -> Result<Self, String> {
-        log::debug!("[ShaderPipeline] Creating shader module from WGSL source ({} bytes)", wgsl_src.len());
+    pub fn new(
+        device: &Device,
+        format: egui_wgpu::wgpu::TextureFormat,
+        wgsl_src: &str,
+    ) -> Result<Self, ShaderError> {
+        eprintln!(">>> ShaderPipeline::new CALLED with {} bytes", wgsl_src.len());
+        log::info!(
+            "[ShaderPipeline] Creating shader module from WGSL source ({} bytes)",
+            wgsl_src.len()
+        );
+
+        // Validate shader source is not empty
+        if wgsl_src.trim().is_empty() {
+            return Err(ShaderError::ValidationError(
+                "Shader source is empty".to_string(),
+            ));
+        }
+
+        // Basic WGSL validation - check for common syntax requirements
+        let has_vertex = wgsl_src.contains("@vertex");
+        let has_fragment = wgsl_src.contains("@fragment");
+
+        if !has_vertex {
+            return Err(ShaderError::ValidationError(
+                "Shader missing @vertex function".to_string(),
+            ));
+        }
+
+        if !has_fragment {
+            return Err(ShaderError::ValidationError(
+                "Shader missing @fragment function".to_string(),
+            ));
+        }
+
+        // Validate WGSL syntax using naga BEFORE passing to wgpu
+        eprintln!(">>> About to validate with naga...");
+        log::debug!("[ShaderPipeline] Validating WGSL with naga...");
+        let module = match naga::front::wgsl::parse_str(wgsl_src) {
+            Ok(module) => {
+                eprintln!(">>> Naga parse SUCCESS");
+                module
+            }
+            Err(parse_error) => {
+                eprintln!(">>> Naga parse FAILED");
+                let error_msg = format!("WGSL Parse Error:\n{}", parse_error.emit_to_string(wgsl_src));
+                log::error!("[ShaderPipeline] {}", error_msg);
+                return Err(ShaderError::ValidationError(error_msg));
+            }
+        };
+
+        // Validate the module
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        );
+        
+        if let Err(validation_error) = validator.validate(&module) {
+            let error_msg = format!("WGSL Validation Error:\n{}", validation_error.emit_to_string(wgsl_src));
+            log::error!("[ShaderPipeline] {}", error_msg);
+            return Err(ShaderError::ValidationError(error_msg));
+        }
+
+        log::info!("[ShaderPipeline] Naga validation passed!");
+
         let shader = device.create_shader_module(egui_wgpu::wgpu::ShaderModuleDescriptor {
             label: Some("dynamic_shader"),
             source: egui_wgpu::wgpu::ShaderSource::Wgsl(wgsl_src.into()),
         });
 
-        log::debug!("[ShaderPipeline] Shader module created successfully");
-
-        let uniform_size = std::mem::size_of::<ShaderUniforms>() as u64;
-        log::debug!("[ShaderPipeline] Creating uniform buffer (size: {} bytes)", uniform_size);
+        log::debug!("[ShaderPipeline] Shader module created successfully");        let uniform_size = std::mem::size_of::<ShaderUniforms>() as u64;
+        log::debug!(
+            "[ShaderPipeline] Creating uniform buffer (size: {} bytes)",
+            uniform_size
+        );
         let uniform_buffer = device.create_buffer(&egui_wgpu::wgpu::BufferDescriptor {
             label: Some("shader_uniforms"),
             size: uniform_size,
@@ -43,19 +107,20 @@ impl ShaderPipeline {
             mapped_at_creation: false,
         });
 
-        let uniform_bgl = device.create_bind_group_layout(&egui_wgpu::wgpu::BindGroupLayoutDescriptor {
-            label: Some("shader_bgl"),
-            entries: &[egui_wgpu::wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: egui_wgpu::wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: egui_wgpu::wgpu::BindingType::Buffer {
-                    ty: egui_wgpu::wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let uniform_bgl =
+            device.create_bind_group_layout(&egui_wgpu::wgpu::BindGroupLayoutDescriptor {
+                label: Some("shader_bgl"),
+                entries: &[egui_wgpu::wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: egui_wgpu::wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: egui_wgpu::wgpu::BindingType::Buffer {
+                        ty: egui_wgpu::wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         let bind_group = device.create_bind_group(&egui_wgpu::wgpu::BindGroupDescriptor {
             label: Some("shader_bg"),
@@ -99,7 +164,10 @@ impl ShaderPipeline {
             cache: None,
         });
 
-        log::info!("[ShaderPipeline] Pipeline created successfully with format: {:?}", format);
+        log::info!(
+            "[ShaderPipeline] Pipeline created successfully with format: {:?}",
+            format
+        );
 
         Ok(Self {
             pipeline,
@@ -142,7 +210,11 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
             _pad0: [0.0, 0.0],
         };
 
-        queue.write_buffer(&self.shader.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+        queue.write_buffer(
+            &self.shader.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&uniforms),
+        );
         Vec::new()
     }
 
@@ -154,7 +226,7 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
     ) {
         render_pass.set_pipeline(&self.shader.pipeline);
         render_pass.set_bind_group(0, &self.shader.bind_group, &[]);
-        render_pass.draw(0..6, 0..1);  // Draw 6 vertices (2 triangles)
+        render_pass.draw(0..6, 0..1); // Draw 6 vertices (2 triangles)
 
         // Log first render only
         static FIRST_RENDER: std::sync::Once = std::sync::Once::new();

@@ -1,19 +1,3 @@
-// 2D LED Spectrum Visualizer
-// Based on Shadertoy LED Spectrum by uNiversal & simesgreen
-// Converted to WGSL for TempRS
-
-struct Uniforms {
-    time: f32,
-    audio_bass: f32,
-    audio_mid: f32,
-    audio_high: f32,
-    resolution: vec2<f32>,
-    _pad0: vec2<f32>,
-}
-
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     // Create pixel coordinates (0 to 1)

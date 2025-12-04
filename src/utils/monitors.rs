@@ -10,10 +10,15 @@ pub fn detect_primary_monitor_xrandr() -> Option<(i32, i32, i32, i32)> {
                             if part.contains("+") && part.contains("x") {
                                 if let Some((geom, _pos)) = part.split_once('+') {
                                     if let Some((w_str, h_str)) = geom.split_once('x') {
-                                        if let (Ok(w), Ok(h)) = (w_str.parse::<i32>(), h_str.parse::<i32>()) {
+                                        if let (Ok(w), Ok(h)) =
+                                            (w_str.parse::<i32>(), h_str.parse::<i32>())
+                                        {
                                             let coords: Vec<&str> = part.split('+').collect();
                                             if coords.len() >= 3 {
-                                                if let (Ok(x), Ok(y)) = (coords[1].parse::<i32>(), coords[2].parse::<i32>()) {
+                                                if let (Ok(x), Ok(y)) = (
+                                                    coords[1].parse::<i32>(),
+                                                    coords[2].parse::<i32>(),
+                                                ) {
                                                     return Some((x, y, w, h));
                                                 }
                                             }
@@ -31,10 +36,15 @@ pub fn detect_primary_monitor_xrandr() -> Option<(i32, i32, i32, i32)> {
                             if part.contains("+") && part.contains("x") {
                                 if let Some((geom, _)) = part.split_once('+') {
                                     if let Some((w_str, h_str)) = geom.split_once('x') {
-                                        if let (Ok(w), Ok(h)) = (w_str.parse::<i32>(), h_str.parse::<i32>()) {
+                                        if let (Ok(w), Ok(h)) =
+                                            (w_str.parse::<i32>(), h_str.parse::<i32>())
+                                        {
                                             let coords: Vec<&str> = part.split('+').collect();
                                             if coords.len() >= 3 {
-                                                if let (Ok(x), Ok(y)) = (coords[1].parse::<i32>(), coords[2].parse::<i32>()) {
+                                                if let (Ok(x), Ok(y)) = (
+                                                    coords[1].parse::<i32>(),
+                                                    coords[2].parse::<i32>(),
+                                                ) {
                                                     return Some((x, y, w, h));
                                                 }
                                             }
@@ -50,4 +60,3 @@ pub fn detect_primary_monitor_xrandr() -> Option<(i32, i32, i32, i32)> {
     }
     None
 }
-

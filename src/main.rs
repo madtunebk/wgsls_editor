@@ -1,14 +1,9 @@
 use eframe::{egui, NativeOptions};
 
-mod wgsl_highlight;
-mod shader_pipeline;
-mod toast;
-mod autocomplete;
-mod theme;
-mod utils;
-mod ui_components;
-mod screens;
 mod funcs;
+mod screens;
+mod ui_components;
+mod utils;
 
 // Window sizing constants
 const DESIGN_W: f32 = 1920.0;
@@ -33,7 +28,9 @@ fn main() {
     }
 
     let mut vp = egui::ViewportBuilder::default().with_inner_size([window_size.x, window_size.y]);
-    if let Some(pos) = window_pos { vp = vp.with_position([pos.x, pos.y]); }
+    if let Some(pos) = window_pos {
+        vp = vp.with_position([pos.x, pos.y]);
+    }
     native_options.viewport = vp;
 
     let result = eframe::run_native(
@@ -41,9 +38,11 @@ fn main() {
         native_options,
         Box::new(|cc| {
             utils::register_error_fonts(&cc.egui_ctx);
-            theme::apply_editor_theme(&cc.egui_ctx);
+            utils::apply_editor_theme(&cc.egui_ctx);
             let mut style = (*cc.egui_ctx.style()).clone();
-            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(18.0));
+            style
+                .text_styles
+                .insert(egui::TextStyle::Monospace, egui::FontId::monospace(18.0));
             cc.egui_ctx.set_style(style);
             Ok(Box::new(screens::editor::TopApp::new(cc)))
         }),
