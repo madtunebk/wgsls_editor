@@ -8,6 +8,7 @@ use std::any::Any;
 
 mod shader_pipeline;
 use shader_pipeline::{ShaderPipeline, ShaderCallback};
+mod theme;
 
 // Design and scaling constants
 const DESIGN_W: f32 = 1920.0;
@@ -518,7 +519,9 @@ fn main() {
         "ShaderToy - Single Window",
         native_options,
         Box::new(|cc| {
-            // Apply default monospace font size; avoid changing global DPI at runtime
+            // Apply custom dark theme and default monospace size
+            theme::apply_shader_dark_theme(&cc.egui_ctx);
+            // Keep editor monospace font comfortable for code
             let mut style = (*cc.egui_ctx.style()).clone();
             style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(18.0));
             cc.egui_ctx.set_style(style);
