@@ -9,6 +9,7 @@ use std::any::Any;
 mod shader_pipeline;
 use shader_pipeline::{ShaderPipeline, ShaderCallback};
 mod theme;
+mod autocomplete;
 
 // Design and scaling constants
 const DESIGN_W: f32 = 1920.0;
@@ -101,6 +102,11 @@ struct TopApp {
 
     // Track last error we notified about to avoid repeated toasts
     last_error_notified: Option<String>,
+
+    // Autocomplete state
+    ac_open: bool,
+    ac_items: Vec<String>,
+    ac_selected: usize,
 }
 
 impl TopApp {
@@ -131,6 +137,9 @@ impl TopApp {
             vertex_cached_src: String::new(),
             vertex_cached_font_size: 0.0,
             last_error_notified: None,
+            ac_open: false,
+            ac_items: Vec::new(),
+            ac_selected: 0,
         };
 
         // If WGPU is available at creation, initialize and spawn background compiler thread
@@ -267,6 +276,10 @@ impl eframe::App for TopApp {
             let editor_h = (avail.y - tab_h - controls_h - padding).max(120.0);
             let _editor_size = egui::Vec2::new(ui.available_width(), editor_h);
 
+            // Capture editor outputs to enable autocomplete and overlay behaviors
+            let mut active_output: Option<egui::widgets::text_edit::TextEditOutput> = None;
+            let mut active_response: Option<egui::Response> = None;
+
             match self.active_tab {
                 0 => {
                     ui.push_id("fragment", |ui| {
@@ -277,11 +290,15 @@ impl eframe::App for TopApp {
                             #[cfg(feature = "code_editor")]
                             {
                                 // Use egui-code-editor when the feature is enabled
+                                let mut captured: Option<egui::widgets::text_edit::TextEditOutput> = None;
                                 let editor_resp = ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
-                                    egui_code_editor::CodeEditor::default()
+                                    let out = egui_code_editor::CodeEditor::default()
                                         .id_source("fragment_editor")
                                         .show(ui_alloc, &mut self.fragment);
+                                    captured = Some(out);
                                 }).response;
+                                if active_output.is_none() { active_output = captured; }
+                                if active_response.is_none() { active_response = Some(editor_resp.clone()); }
                                 // Overlay gear in top-right (hover-only or while menu open)
                                 let menu_id = egui::Id::new("fragment_scale_menu");
                                 let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
@@ -330,7 +347,13 @@ impl eframe::App for TopApp {
                                     .frame(false)
                                     .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
                                     .layouter(&mut fragment_layouter);
-                                let editor_resp = ui_inner.add_sized(desired, te);
+                                let mut captured: Option<egui::widgets::text_edit::TextEditOutput> = None;
+                                let editor_resp = ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
+                                    let out = te.show(ui_alloc);
+                                    captured = Some(out);
+                                }).response;
+                                if active_output.is_none() { active_output = captured; }
+                                if active_response.is_none() { active_response = Some(editor_resp.clone()); }
                                 // Overlay gear (hover-only or while menu open)
                                 let menu_id = egui::Id::new("fragment_scale_menu");
                                 let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
@@ -376,11 +399,15 @@ impl eframe::App for TopApp {
                             let desired = egui::Vec2::new(width, editor_h);
                             #[cfg(feature = "code_editor")]
                             {
+                                let mut captured: Option<egui::widgets::text_edit::TextEditOutput> = None;
                                 let editor_resp = ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
-                                    egui_code_editor::CodeEditor::default()
+                                    let out = egui_code_editor::CodeEditor::default()
                                         .id_source("vertex_editor")
                                         .show(ui_alloc, &mut self.vertex);
+                                    captured = Some(out);
                                 }).response;
+                                if active_output.is_none() { active_output = captured; }
+                                if active_response.is_none() { active_response = Some(editor_resp.clone()); }
                                 let menu_id = egui::Id::new("vertex_scale_menu");
                                 let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
                                 if show_gear {
@@ -417,17 +444,23 @@ impl eframe::App for TopApp {
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
-                            let mut vertex_layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
-                                let mut job = layout_job_from_str(text.as_str(), self.editor_font_size);
-                                job.wrap.max_width = wrap_width;
-                                ui.painter().layout_job(job)
-                            };
+                                let mut vertex_layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
+                                    let mut job = layout_job_from_str(text.as_str(), self.editor_font_size);
+                                    job.wrap.max_width = wrap_width;
+                                    ui.painter().layout_job(job)
+                                };
                                 let te = egui::widgets::TextEdit::multiline(&mut self.vertex)
                                     .font(egui::TextStyle::Monospace)
                                     .frame(false)
                                     .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
                                     .layouter(&mut vertex_layouter);
-                                let editor_resp = ui_inner.add_sized(desired, te);
+                                let mut captured: Option<egui::widgets::text_edit::TextEditOutput> = None;
+                                let editor_resp = ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
+                                    let out = te.show(ui_alloc);
+                                    captured = Some(out);
+                                }).response;
+                                if active_output.is_none() { active_output = captured; }
+                                if active_response.is_none() { active_response = Some(editor_resp.clone()); }
                                 let menu_id = egui::Id::new("vertex_scale_menu");
                                 let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
                                 if show_gear {
@@ -468,58 +501,122 @@ impl eframe::App for TopApp {
                 _ => {}
             }
 
-            ui.add_space(12.0);
+            // Autocomplete: Ctrl+Space to open, arrow keys to navigate, Enter/Tab to accept, Esc to close
+            if let Some(out) = &active_output {
+                let caret_char = out
+                    .cursor_range
+                    .as_ref()
+                    .map(|r| r.primary.index)
+                    .unwrap_or(0);
+                let (text, is_fragment) = if self.active_tab == 0 {
+                    (&mut self.fragment, true)
+                } else {
+                    (&mut self.vertex, false)
+                };
 
-            // Apply / Reset as two large buttons sized from panel width
+                // Trigger open on Ctrl/Cmd+Space
+                let trigger_open = ui.input(|i| {
+                    i.key_pressed(egui::Key::Space) && (i.modifiers.ctrl || i.modifiers.command)
+                });
+                if trigger_open {
+                    let prefix = current_prefix(text, caret_char);
+                    let all = autocomplete::suggestions();
+                    self.ac_items = all
+                        .iter()
+                        .filter_map(|w| {
+                            if !prefix.is_empty() && w.starts_with(&prefix) && &prefix != *w {
+                                Some((*w).to_string())
+                            } else { None }
+                        })
+                        .take(32)
+                        .collect();
+                    self.ac_selected = 0.min(self.ac_items.len().saturating_sub(1));
+                    self.ac_open = !self.ac_items.is_empty();
+                }
+
+                // Navigation and accept/close
+                if self.ac_open {
+                    ui.input(|i| {
+                        if i.key_pressed(egui::Key::ArrowDown) {
+                            if !self.ac_items.is_empty() {
+                                self.ac_selected = (self.ac_selected + 1).min(self.ac_items.len() - 1);
+                            }
+                        }
+                        if i.key_pressed(egui::Key::ArrowUp) {
+                            if !self.ac_items.is_empty() {
+                                self.ac_selected = self.ac_selected.saturating_sub(1);
+                            }
+                        }
+                    });
+                    let accept = ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Tab));
+                    let cancel = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    if accept && !self.ac_items.is_empty() {
+                        let word = self.ac_items[self.ac_selected].clone();
+                        apply_completion(text, caret_char, &word);
+                        self.ac_open = false;
+                    } else if cancel {
+                        self.ac_open = false;
+                    }
+
+                    // Show popup anchored to the active editor
+                    if let Some(resp) = &active_response {
+                        let id = if is_fragment { egui::Id::new("ac_fragment") } else { egui::Id::new("ac_vertex") };
+                        let mut open_ref = self.ac_open;
+                        if let Some(_ir) = egui::Popup::from_response(resp)
+                            .id(id)
+                            .open_bool(&mut open_ref)
+                            .show(|ui_ac| {
+                                ui_ac.set_width(220.0);
+                                let max = 10.min(self.ac_items.len());
+                                for (i, item) in self.ac_items.iter().take(max).enumerate() {
+                                    let selected = i == self.ac_selected;
+                                    let label = if selected { egui::RichText::new(item).strong() } else { egui::RichText::new(item.clone()) };
+                                    if ui_ac.selectable_label(selected, label).clicked() {
+                                        apply_completion(text, caret_char, item);
+                                        // Close after selection
+                                        // We'll update outside
+                                    }
+                                }
+                            }) { }
+                        self.ac_open = open_ref && !self.ac_items.is_empty();
+                    }
+                }
+            }
+
+            // Bottom-anchored Apply/Reset row overlay inside the side panel
             let spacing = 6.0;
             let panel_w = side_width as f32 - 16.0; // match tab sizing
             let btn_w = ((panel_w - spacing) / 2.0).max(80.0);
             let btn_h = (self.editor_font_size * 1.6).clamp(24.0, 36.0);
             let btn_size = egui::Vec2::new(btn_w, btn_h);
-
-            ui.horizontal(|ui| {
-                if ui.add_sized(btn_size, egui::Button::new("Apply")).clicked() {
-                    let combined = compose_wgsl(&self.vertex, &self.fragment);
-                    let mut p = self.pending_wgsl.lock().unwrap();
-                    *p = Some(combined);
-                }
-                ui.add_space(spacing);
-                if ui.add_sized(btn_size, egui::Button::new("Reset")).clicked() {
-                    self.vertex = DEFAULT_VERTEX.to_string();
-                    self.fragment = DEFAULT_FRAGMENT_A.to_string();
-                    // Invalidate cached layout jobs
-                    self.fragment_job = None;
-                    self.fragment_cached_src.clear();
-                    self.vertex_job = None;
-                    self.vertex_cached_src.clear();
-                }
+            let panel_rect = ui.max_rect();
+            let bottom_margin = 16.0;
+            let left_margin = 8.0;
+            let row_rect = egui::Rect::from_min_size(
+                egui::pos2(panel_rect.left() + left_margin, panel_rect.bottom() - btn_h - bottom_margin),
+                egui::vec2(panel_w, btn_h),
+            );
+            ui.allocate_ui_at_rect(row_rect, |ui| {
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    if ui.add_sized(btn_size, egui::Button::new("Apply")).clicked() {
+                        let combined = compose_wgsl(&self.vertex, &self.fragment);
+                        let mut p = self.pending_wgsl.lock().unwrap();
+                        *p = Some(combined);
+                    }
+                    ui.add_space(spacing);
+                    if ui.add_sized(btn_size, egui::Button::new("Reset")).clicked() {
+                        self.vertex = DEFAULT_VERTEX.to_string();
+                        self.fragment = DEFAULT_FRAGMENT_A.to_string();
+                        // Invalidate cached layout jobs
+                        self.fragment_job = None;
+                        self.fragment_cached_src.clear();
+                        self.vertex_job = None;
+                        self.vertex_cached_src.clear();
+                    }
+                });
             });
 
-            // Compact settings icon with popup
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                let icon = egui::RichText::new("⚙").size((self.editor_font_size * 0.9).clamp(14.0, 22.0));
-                let resp = ui.add(egui::Button::new(icon).frame(true)).on_hover_text("Editor scale & font size");
-                // Popup anchored to the gear button
-                if let Some(mut popup) = egui::Popup::menu(&resp)
-                    .id(egui::Id::new("editor_scale_menu"))
-                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                    .show(|ui_menu| {
-                        ui_menu.label("Editor scale");
-                        let mut s = self.ui_scale;
-                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
-                            self.ui_scale = s;
-                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
-                            let ctx = ui_menu.ctx();
-                            let mut style = (*ctx.style()).clone();
-                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                            ctx.set_style(style);
-                        }
-                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
-                    })
-                { let _ = popup; }
-                ui.label(format!("{:.0} px", self.editor_font_size));
-            });
+            // Settings row removed; overlay gear handles editor scale
         });
 
         // Central panel: preview only
@@ -586,6 +683,41 @@ fn panic_to_string(e: Box<dyn Any + Send>) -> String {
         s.clone()
     } else {
         "Unknown panic occurred during shader compilation".to_string()
+    }
+}
+
+fn current_prefix(text: &str, caret_char: usize) -> String {
+    let mut idx = caret_char.min(text.chars().count());
+    let chars: Vec<char> = text.chars().collect();
+    while idx > 0 {
+        let c = chars[idx - 1];
+        if c.is_alphanumeric() || c == '_' || c == '@' { idx -= 1; } else { break; }
+    }
+    chars[idx..caret_char.min(chars.len())].iter().collect()
+}
+
+fn byte_index_from_char_index(s: &str, char_index: usize) -> usize {
+    if char_index == 0 { return 0; }
+    let mut count = 0usize;
+    for (i, _) in s.char_indices() {
+        if count == char_index { return i; }
+        count += 1;
+    }
+    s.len()
+}
+
+fn apply_completion(target: &mut String, caret_char: usize, word: &str) {
+    // Replace the current prefix before the caret with the selected word
+    let chars: Vec<char> = target.chars().collect();
+    let mut start = caret_char.min(chars.len());
+    while start > 0 {
+        let c = chars[start - 1];
+        if c.is_alphanumeric() || c == '_' || c == '@' { start -= 1; } else { break; }
+    }
+    let start_b = byte_index_from_char_index(target, start);
+    let end_b = byte_index_from_char_index(target, caret_char.min(chars.len()));
+    if start_b <= end_b && end_b <= target.len() {
+        target.replace_range(start_b..end_b, word);
     }
 }
 

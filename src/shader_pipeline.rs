@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use eframe::{egui, epaint};
+use eframe::epaint;
 use eframe::wgpu::{Device, RenderPipeline, Buffer, BindGroup};
 
 // Shader uniforms structure

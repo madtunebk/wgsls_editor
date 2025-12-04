@@ -1,4 +1,4 @@
-use eframe::egui::{text::{LayoutJob, TextFormat}, Color32, FontId, TextStyle};
+use eframe::egui::{text::{LayoutJob, TextFormat}, Color32, FontId};
 
 // Enhanced WGSL syntax highlighter. No external crates.
 // Highlights: keywords, types, attributes, intrinsics, address spaces, builtins, numbers, strings, comments, punctuation.
@@ -63,7 +63,7 @@ pub fn layout_job_from_str(src: &str, font_size: f32) -> LayoutJob {
     let col_cmt = Color32::from_rgb(90, 180, 120);      // comments
     let col_punc = Color32::from_gray(180);             // punctuation
 
-    let mut tf_default = TextFormat { font_id: mono.clone(), color: Color32::WHITE, ..Default::default() };
+    let tf_default = TextFormat { font_id: mono.clone(), color: Color32::WHITE, ..Default::default() };
     let tf_kw = TextFormat { font_id: mono.clone(), color: col_kw, ..Default::default() };
     let tf_ty = TextFormat { font_id: mono.clone(), color: col_ty, ..Default::default() };
     let tf_attr = TextFormat { font_id: mono.clone(), color: col_attr, ..Default::default() };
