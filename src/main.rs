@@ -363,7 +363,8 @@ impl eframe::App for TopApp {
                 ui.separator();
 
                 if let Some(err) = self.last_error.lock().unwrap().clone() {
-                    ui.colored_label(egui::Color32::RED, format!("Shader error: {}", err));
+                    let summary = summarize_shader_error(&err);
+                    ui.colored_label(egui::Color32::RED, format!("{}", summary));
                 }
 
                 let available = ui.available_size();
@@ -388,7 +389,8 @@ impl eframe::App for TopApp {
             if !err.is_empty() {
                 // Only notify once per distinct error message
                 if self.last_error_notified.as_ref().map(|s| s != &err).unwrap_or(true) {
-                    self.toast_mgr.show_error("Shader compile error — opened fragment");
+                    let summary = summarize_shader_error(&err);
+                    self.toast_mgr.show_error(summary);
                     self.active_tab = 0;
                     self.last_error_notified = Some(err.clone());
                 }
@@ -417,6 +419,20 @@ fn panic_to_string(e: Box<dyn Any + Send>) -> String {
     } else {
         "Unknown panic occurred during shader compilation".to_string()
     }
+}
+
+fn summarize_shader_error(err: &str) -> String {
+    // Use first informative non-empty line; trim and truncate for toast
+    let mut line = err
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    // Prefer a line containing common hints
+    if let Some(l) = err.lines().find(|l| l.contains("expected") || l.contains("error")) { line = l.trim(); }
+    let mut msg = format!("Shader error: {}", line);
+    if msg.len() > 160 { msg.truncate(157); msg.push_str("..."); }
+    msg
 }
 
 fn compose_wgsl(vertex: &str, fragment: &str) -> String {
