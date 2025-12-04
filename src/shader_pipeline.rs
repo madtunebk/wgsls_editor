@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use eframe::egui;
+use eframe::{egui, epaint};
 use eframe::wgpu::{Device, RenderPipeline, Buffer, BindGroup};
 
 // Shader uniforms structure
@@ -78,12 +78,14 @@ impl ShaderPipeline {
             layout: Some(&pipeline_layout),
             vertex: egui_wgpu::wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
+                compilation_options: egui_wgpu::wgpu::PipelineCompilationOptions::default(),
                 buffers: &[],
             },
             fragment: Some(egui_wgpu::wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
+                compilation_options: egui_wgpu::wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(egui_wgpu::wgpu::ColorTargetState {
                     format,
                     blend: Some(egui_wgpu::wgpu::BlendState::ALPHA_BLENDING),
@@ -94,6 +96,7 @@ impl ShaderPipeline {
             depth_stencil: None,
             multisample: egui_wgpu::wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None,
         });
 
         log::info!("[ShaderPipeline] Pipeline created successfully with format: {:?}", format);
@@ -117,16 +120,16 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
         &self,
         _device: &eframe::wgpu::Device,
         queue: &eframe::wgpu::Queue,
+        screen_descriptor: &egui_wgpu::ScreenDescriptor,
         _encoder: &mut eframe::wgpu::CommandEncoder,
-        resources: &mut egui_wgpu::renderer::CallbackResources,
+        _resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<eframe::wgpu::CommandBuffer> {
         let elapsed = self.shader.start_time.elapsed().as_secs_f32();
 
-        // Try to obtain the screen descriptor from resources
-        let mut resolution = [1.0f32, 1.0f32];
-        if let Some(sd) = resources.get::<egui_wgpu::renderer::ScreenDescriptor>() {
-            resolution = [sd.size_in_pixels[0] as f32, sd.size_in_pixels[1] as f32];
-        }
+        let resolution = [
+            screen_descriptor.size_in_pixels[0] as f32,
+            screen_descriptor.size_in_pixels[1] as f32,
+        ];
 
         let uniforms = ShaderUniforms {
             time: elapsed,
@@ -141,11 +144,11 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
         Vec::new()
     }
 
-    fn paint<'a>(
-        &'a self,
-        _info: egui::PaintCallbackInfo,
-        render_pass: &mut eframe::wgpu::RenderPass<'a>,
-        _resources: &'a egui_wgpu::renderer::CallbackResources,
+    fn paint(
+        &self,
+        _info: epaint::PaintCallbackInfo,
+        render_pass: &mut eframe::wgpu::RenderPass<'static>,
+        _resources: &egui_wgpu::CallbackResources,
     ) {
         render_pass.set_pipeline(&self.shader.pipeline);
         render_pass.set_bind_group(0, &self.shader.bind_group, &[]);

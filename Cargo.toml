@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# enable eframe's wgpu renderer
-eframe = { version = "0.23", features = ["wgpu"] }
-egui-wgpu = "0.23"
+# eframe/egui latest compatible with code editor
+eframe = { version = "0.33", features = ["wgpu"] }
+egui-wgpu = "0.33"
 bytemuck = "1.16"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -17,9 +17,8 @@ regex = "1.10"
 
 [features]
 default = []
-code_editor = ["egui-code-editor"]
+code_editor = ["egui_code_editor"]
 
-[dependencies.egui-code-editor]
-package = "egui-code-editor"
-version = "0.2"
+[dependencies.egui_code_editor]
+version = "0.2.20"
 optional = true

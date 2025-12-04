@@ -231,7 +231,10 @@ impl eframe::App for TopApp {
                 // Fragment tab (left)
                 let fill = if self.active_tab == 0 { active_color } else { inactive_color };
                 let stroke = if self.active_tab == 0 { egui::Stroke::new(2.0, active_color) } else { egui::Stroke::new(1.0, border_color) };
-                let frame = egui::Frame::group(&ctx.style()).fill(fill).stroke(stroke).inner_margin(egui::Margin::same(6.0));
+                let frame = egui::Frame::group(&ctx.style())
+                    .fill(fill)
+                    .stroke(stroke)
+                    .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 });
                 frame.show(ui, |ui| {
                     let mut label = egui::RichText::new("Fragment");
                     if self.active_tab == 0 { label = label.color(egui::Color32::WHITE).strong(); } else { label = label.color(egui::Color32::LIGHT_GRAY); }
@@ -243,7 +246,10 @@ impl eframe::App for TopApp {
                 // Vertex tab (right)
                 let fill2 = if self.active_tab == 1 { active_color } else { inactive_color };
                 let stroke2 = if self.active_tab == 1 { egui::Stroke::new(2.0, active_color) } else { egui::Stroke::new(1.0, border_color) };
-                let frame2 = egui::Frame::group(&ctx.style()).fill(fill2).stroke(stroke2).inner_margin(egui::Margin::same(6.0));
+                let frame2 = egui::Frame::group(&ctx.style())
+                    .fill(fill2)
+                    .stroke(stroke2)
+                    .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 });
                 frame2.show(ui, |ui| {
                     let mut label2 = egui::RichText::new("Vertex");
                     if self.active_tab == 1 { label2 = label2.color(egui::Color32::WHITE).strong(); } else { label2 = label2.color(egui::Color32::LIGHT_GRAY); }
@@ -265,7 +271,7 @@ impl eframe::App for TopApp {
                 0 => {
                     ui.push_id("fragment", |ui| {
                         // Editor with internal scrollbar
-                        egui::ScrollArea::vertical().id_source("fragment_scroll").max_height(editor_h).show(ui, |ui_inner| {
+                        egui::ScrollArea::vertical().id_salt("fragment_scroll").max_height(editor_h).show(ui, |ui_inner| {
                             let width = ui_inner.available_width();
                             let desired = egui::Vec2::new(width, editor_h);
                             #[cfg(feature = "code_editor")]
@@ -297,7 +303,7 @@ impl eframe::App for TopApp {
                 }
                 1 => {
                     ui.push_id("vertex", |ui| {
-                        egui::ScrollArea::vertical().id_source("vertex_scroll").max_height(editor_h).show(ui, |ui_inner| {
+                        egui::ScrollArea::vertical().id_salt("vertex_scroll").max_height(editor_h).show(ui, |ui_inner| {
                             let width = ui_inner.available_width();
                             let desired = egui::Vec2::new(width, editor_h);
                             #[cfg(feature = "code_editor")]
@@ -394,7 +400,7 @@ impl eframe::App for TopApp {
                         rect,
                         ShaderCallback { shader: Arc::clone(&shader_opt) },
                     );
-                    ui.painter().rect_stroke(rect, 0.0, (1.0, egui::Color32::GRAY));
+                    ui.painter().rect_stroke(rect, 0.0, egui::Stroke::new(1.0, egui::Color32::GRAY), egui::StrokeKind::Outside);
                     ui.painter().add(callback);
                 } else {
                     ui.label("Renderer not initialized");
@@ -420,7 +426,7 @@ impl eframe::App for TopApp {
         }
 
         // Render toast notifications anchored bottom-center using an Area
-        egui::Area::new("global_toasts").anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::new(0.0, -80.0)).show(ctx, |ui| {
+        egui::Area::new(egui::Id::new("global_toasts")).anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::new(0.0, -80.0)).show(ctx, |ui| {
             self.toast_mgr.render(ui);
         });
 
@@ -545,9 +551,10 @@ fn main() {
         window_pos = Some(egui::Pos2::new(px as f32, py as f32));
     }
 
-    native_options.initial_window_size = Some(window_size);
-    native_options.initial_window_pos = window_pos;
-    native_options.default_theme = eframe::Theme::Dark;
+    // Configure window via viewport builder (egui 0.33)
+    let mut vp = egui::ViewportBuilder::default().with_inner_size([window_size.x, window_size.y]);
+    if let Some(pos) = window_pos { vp = vp.with_position([pos.x, pos.y]); }
+    native_options.viewport = vp;
 
     let result = eframe::run_native(
         "ShaderToy - Single Window",
@@ -559,7 +566,7 @@ fn main() {
             let mut style = (*cc.egui_ctx.style()).clone();
             style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(18.0));
             cc.egui_ctx.set_style(style);
-            Box::new(TopApp::new(cc))
+            Ok(Box::new(TopApp::new(cc)))
         }),
     );
 

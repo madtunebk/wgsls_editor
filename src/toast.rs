@@ -50,7 +50,7 @@ impl ToastManager {
     pub fn render(&mut self, ui: &mut egui::Ui) {
         self.toasts.retain(|t| !t.is_expired());
         if self.toasts.is_empty() { return; }
-        let screen_rect = ui.ctx().screen_rect();
+        let screen_rect = ui.ctx().content_rect();
         let toast_width = 520.0;
         let toast_height = 56.0;
         let toast_spacing = 10.0;
@@ -75,7 +75,12 @@ impl ToastManager {
                 (230.0 * opacity) as u8,
             );
             ui.painter().rect_filled(rect, 8.0, bg_with_opacity);
-            ui.painter().rect_stroke(rect, 8.0, egui::Stroke::new(1.0, Color32::from_rgba_premultiplied(255,255,255,(120.0*opacity) as u8)));
+            ui.painter().rect_stroke(
+                rect,
+                8.0,
+                egui::Stroke::new(1.0, Color32::from_rgba_premultiplied(255,255,255,(120.0*opacity) as u8)),
+                egui::StrokeKind::Outside,
+            );
             let icon_pos = Pos2::new(rect.min.x + 18.0, rect.center().y);
             ui.painter().text(icon_pos, Align2::LEFT_CENTER, icon, FontId::proportional(20.0), Color32::from_rgba_premultiplied(255,255,255,(255.0*opacity) as u8));
             let text_rect = Rect::from_min_max(Pos2::new(rect.min.x + 44.0, rect.min.y), rect.max);
