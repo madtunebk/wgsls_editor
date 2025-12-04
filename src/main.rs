@@ -305,6 +305,17 @@ impl eframe::App for TopApp {
                                 }).response;
                                 if active_output.is_none() { active_output = captured; }
                                 if active_response.is_none() { active_response = Some(editor_resp.clone()); }
+                                if self.ac_open { editor_resp.surrender_focus(); }
+                                // Overlay settings gear (top-right)
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                let _ = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("settings_fragment"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_s| settings_menu_ui(ui_s, &mut self.ac_on_type, &mut self.editor_font_size));
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
@@ -328,6 +339,17 @@ impl eframe::App for TopApp {
                                 }).response;
                                 if active_output.is_none() { active_output = captured; }
                                 if active_response.is_none() { active_response = Some(editor_resp.clone()); }
+                                if self.ac_open { editor_resp.surrender_focus(); }
+                                // Overlay settings gear (top-right)
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                let _ = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("settings_fragment"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_s| settings_menu_ui(ui_s, &mut self.ac_on_type, &mut self.editor_font_size));
                             }
                         });
                     });
@@ -349,6 +371,17 @@ impl eframe::App for TopApp {
                                 }).response;
                                 if active_output.is_none() { active_output = captured; }
                                 if active_response.is_none() { active_response = Some(editor_resp.clone()); }
+                                if self.ac_open { editor_resp.surrender_focus(); }
+                                // Overlay settings gear (top-right)
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                let _ = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("settings_vertex"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_s| settings_menu_ui(ui_s, &mut self.ac_on_type, &mut self.editor_font_size));
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
@@ -371,6 +404,17 @@ impl eframe::App for TopApp {
                                 }).response;
                                 if active_output.is_none() { active_output = captured; }
                                 if active_response.is_none() { active_response = Some(editor_resp.clone()); }
+                                if self.ac_open { editor_resp.surrender_focus(); }
+                                // Overlay settings gear (top-right)
+                                let size = egui::vec2(24.0, 24.0);
+                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                let overlay_rect = egui::Rect::from_min_size(min, size);
+                                let icon = egui::RichText::new("⚙");
+                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                let _ = egui::Popup::menu(&btn_resp)
+                                    .id(egui::Id::new("settings_vertex"))
+                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                    .show(|ui_s| settings_menu_ui(ui_s, &mut self.ac_on_type, &mut self.editor_font_size));
                             }
                         });
                     });
@@ -430,31 +474,11 @@ impl eframe::App for TopApp {
                     self.ac_open = !self.ac_items.is_empty();
                 }
 
-                // Navigation and accept/close
+                // Navigation and accept/close handled inside the popup; ensure editor has no focus
                 if self.ac_open {
-                    ui.input(|i| {
-                        if i.key_pressed(egui::Key::ArrowDown) {
-                            if !self.ac_items.is_empty() {
-                                self.ac_selected = (self.ac_selected + 1).min(self.ac_items.len() - 1);
-                            }
-                        }
-                        if i.key_pressed(egui::Key::ArrowUp) {
-                            if !self.ac_items.is_empty() {
-                                self.ac_selected = self.ac_selected.saturating_sub(1);
-                            }
-                        }
-                    });
-                    let accept = ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Tab));
-                    let cancel = ui.input(|i| i.key_pressed(egui::Key::Escape));
-                    if accept && !self.ac_items.is_empty() {
-                        let word = self.ac_items[self.ac_selected].clone();
-                        apply_completion(text, caret_char, &word);
-                        self.ac_open = false;
-                    } else if cancel {
-                        self.ac_open = false;
-                    }
+                    if let Some(resp) = &active_response { resp.surrender_focus(); }
 
-                    // Show popup anchored to the active editor
+                    // Show popup anchored near the active editor; try to align right under the tab bar
                     if let Some(resp) = &active_response {
                         let id = if is_fragment { egui::Id::new("ac_fragment") } else { egui::Id::new("ac_vertex") };
                         let mut open_ref = self.ac_open;
@@ -462,6 +486,24 @@ impl eframe::App for TopApp {
                             .id(id)
                             .open_bool(&mut open_ref)
                             .show(|ui_ac| {
+                                // Grab keyboard focus while the popup is open so arrows/enter/tab work here
+                                let (_r, focus_resp) = ui_ac.allocate_exact_size(egui::vec2(1.0, 1.0), egui::Sense::focusable_noninteractive());
+                                if !focus_resp.has_focus() { focus_resp.request_focus(); }
+
+                                // Handle navigation/accept/cancel here with popup focus
+                                if ui_ac.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                                    if !self.ac_items.is_empty() {
+                                        self.ac_selected = (self.ac_selected + 1).min(self.ac_items.len() - 1);
+                                    }
+                                }
+                                if ui_ac.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                                    if !self.ac_items.is_empty() {
+                                        self.ac_selected = self.ac_selected.saturating_sub(1);
+                                    }
+                                }
+                                let pressed_enter = ui_ac.input(|i| i.key_pressed(egui::Key::Enter));
+                                let pressed_tab = ui_ac.input(|i| i.key_pressed(egui::Key::Tab));
+                                let cancel = ui_ac.input(|i| i.key_pressed(egui::Key::Escape));
                                 ui_ac.set_width(220.0);
                                 let max = 10.min(self.ac_items.len());
                                 for (i, item) in self.ac_items.iter().take(max).enumerate() {
@@ -469,57 +511,30 @@ impl eframe::App for TopApp {
                                     let label = if selected { egui::RichText::new(item).strong() } else { egui::RichText::new(item.clone()) };
                                     if ui_ac.selectable_label(selected, label).clicked() {
                                         apply_completion(text, caret_char, item);
-                                        // Close after selection
-                                        // We'll update outside
+                                        self.ac_open = false;
                                     }
                                 }
+                                // Accept selection with Enter/Tab
+                                if (pressed_enter || pressed_tab) && !self.ac_items.is_empty() {
+                                    let word = self.ac_items[self.ac_selected].clone();
+                                    apply_completion(text, caret_char, &word);
+                                    if pressed_tab {
+                                        let idx = byte_index_from_char_index(text, caret_char);
+                                        if idx > 0 {
+                                            let prev = idx - 1;
+                                            if text.as_bytes()[prev] == b'\t' { text.remove(prev); }
+                                        }
+                                    }
+                                    self.ac_open = false;
+                                }
+                                if cancel { self.ac_open = false; }
                             }) { }
                         self.ac_open = open_ref && !self.ac_items.is_empty();
                     }
                 }
             }
 
-            // Settings row: button + font size control
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                let icon = egui::RichText::new("⚙");
-                let btn = ui.add(egui::Button::new(icon).frame(true)).on_hover_text("Editor settings");
-                if let Some(_popup) = egui::Popup::menu(&btn)
-                    .id(egui::Id::new("editor_settings_menu"))
-                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                    .show(|ui_s| {
-                        ui_s.checkbox(&mut self.ac_on_type, "Autocomplete while typing");
-                        ui_s.label("Manual trigger: Ctrl/Cmd+Space");
-                        ui_s.separator();
-                        ui_s.label("Font size");
-                        let mut size = self.editor_font_size;
-                        if ui_s.add(egui::Slider::new(&mut size, 10.0..=36.0)).changed() {
-                            self.editor_font_size = size;
-                            let ctx = ui_s.ctx();
-                            let mut style = (*ctx.style()).clone();
-                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                            ctx.set_style(style);
-                        }
-                        ui_s.horizontal(|ui_h| {
-                            if ui_h.small_button("-").clicked() {
-                                self.editor_font_size = (self.editor_font_size - 1.0).clamp(10.0, 36.0);
-                                let ctx = ui_h.ctx();
-                                let mut style = (*ctx.style()).clone();
-                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                                ctx.set_style(style);
-                            }
-                            ui_h.label(format!("{:.0} px", self.editor_font_size));
-                            if ui_h.small_button("+").clicked() {
-                                self.editor_font_size = (self.editor_font_size + 1.0).clamp(10.0, 36.0);
-                                let ctx = ui_h.ctx();
-                                let mut style = (*ctx.style()).clone();
-                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                                ctx.set_style(style);
-                            }
-                        });
-                    }) { }
-                ui.label(format!("{:.0} px", self.editor_font_size));
-            });
+            // (no extra settings row; use the overlay gear in editors)
 
             // Bottom-anchored Apply/Reset row overlay inside the side panel
             let spacing = 6.0;
@@ -657,6 +672,38 @@ fn apply_completion(target: &mut String, caret_char: usize, word: &str) {
     if start_b <= end_b && end_b <= target.len() {
         target.replace_range(start_b..end_b, word);
     }
+}
+
+fn settings_menu_ui(ui_s: &mut egui::Ui, ac_on_type: &mut bool, editor_font_size: &mut f32) {
+    ui_s.checkbox(ac_on_type, "Autocomplete while typing");
+    ui_s.label("Manual trigger: Ctrl/Cmd+Space");
+    ui_s.separator();
+    ui_s.label("Font size");
+    let mut size = *editor_font_size;
+    if ui_s.add(egui::Slider::new(&mut size, 10.0..=36.0)).changed() {
+        *editor_font_size = size;
+        let ctx = ui_s.ctx();
+        let mut style = (*ctx.style()).clone();
+        style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(*editor_font_size));
+        ctx.set_style(style);
+    }
+    ui_s.horizontal(|ui_h| {
+        if ui_h.small_button("-").clicked() {
+            *editor_font_size = (*editor_font_size - 1.0).clamp(10.0, 36.0);
+            let ctx = ui_h.ctx();
+            let mut style = (*ctx.style()).clone();
+            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(*editor_font_size));
+            ctx.set_style(style);
+        }
+        ui_h.label(format!("{:.0} px", *editor_font_size));
+        if ui_h.small_button("+").clicked() {
+            *editor_font_size = (*editor_font_size + 1.0).clamp(10.0, 36.0);
+            let ctx = ui_h.ctx();
+            let mut style = (*ctx.style()).clone();
+            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(*editor_font_size));
+            ctx.set_style(style);
+        }
+    });
 }
 
 fn summarize_shader_error(err: &str) -> String {
