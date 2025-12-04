@@ -264,46 +264,64 @@ impl eframe::App for TopApp {
             match self.active_tab {
                 0 => {
                     ui.push_id("fragment", |ui| {
-                        // Fixed-height editor with internal scrollbar and syntax-highlighted view behind transparent TextEdit
+                        // Editor with internal scrollbar
                         egui::ScrollArea::vertical().id_source("fragment_scroll").max_height(editor_h).show(ui, |ui_inner| {
                             let width = ui_inner.available_width();
                             let desired = egui::Vec2::new(width, editor_h);
-
-                            // Use TextEdit with a custom layouter so the same LayoutJob is used for drawing
-                            let mut fragment_layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                                let mut job = layout_job_from_str(string, self.editor_font_size);
-                                job.wrap.max_width = wrap_width;
-                                ui.fonts(|f| f.layout_job(job))
-                            };
-                            let mut te = egui::widgets::TextEdit::multiline(&mut self.fragment)
-                                .font(egui::TextStyle::Monospace)
-                                .frame(false)
-                                .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
-                                .layouter(&mut fragment_layouter);
-
-                            ui_inner.add_sized(desired, te);
+                            #[cfg(feature = "code_editor")]
+                            {
+                                // Use egui-code-editor when the feature is enabled
+                                ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
+                                    egui_code_editor::CodeEditor::default()
+                                        .id_source("fragment_editor")
+                                        .show(ui_alloc, &mut self.fragment);
+                                });
+                            }
+                            #[cfg(not(feature = "code_editor"))]
+                            {
+                                // Fallback: TextEdit with custom WGSL highlighter
+                                let mut fragment_layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
+                                    let mut job = layout_job_from_str(string, self.editor_font_size);
+                                    job.wrap.max_width = wrap_width;
+                                    ui.fonts(|f| f.layout_job(job))
+                                };
+                                let te = egui::widgets::TextEdit::multiline(&mut self.fragment)
+                                    .font(egui::TextStyle::Monospace)
+                                    .frame(false)
+                                    .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
+                                    .layouter(&mut fragment_layouter);
+                                ui_inner.add_sized(desired, te);
+                            }
                         });
                     });
                 }
                 1 => {
                     ui.push_id("vertex", |ui| {
-                        // Fixed-height editor with internal scrollbar and syntax-highlighted view behind transparent TextEdit
                         egui::ScrollArea::vertical().id_source("vertex_scroll").max_height(editor_h).show(ui, |ui_inner| {
                             let width = ui_inner.available_width();
                             let desired = egui::Vec2::new(width, editor_h);
-
-                            let mut vertex_layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                                let mut job = layout_job_from_str(string, self.editor_font_size);
-                                job.wrap.max_width = wrap_width;
-                                ui.fonts(|f| f.layout_job(job))
-                            };
-                            let mut te = egui::widgets::TextEdit::multiline(&mut self.vertex)
-                                .font(egui::TextStyle::Monospace)
-                                .frame(false)
-                                .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
-                                .layouter(&mut vertex_layouter);
-
-                            ui_inner.add_sized(desired, te);
+                            #[cfg(feature = "code_editor")]
+                            {
+                                ui_inner.allocate_ui_with_layout(desired, egui::Layout::left_to_right(egui::Align::TOP), |ui_alloc| {
+                                    egui_code_editor::CodeEditor::default()
+                                        .id_source("vertex_editor")
+                                        .show(ui_alloc, &mut self.vertex);
+                                });
+                            }
+                            #[cfg(not(feature = "code_editor"))]
+                            {
+                                let mut vertex_layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
+                                    let mut job = layout_job_from_str(string, self.editor_font_size);
+                                    job.wrap.max_width = wrap_width;
+                                    ui.fonts(|f| f.layout_job(job))
+                                };
+                                let te = egui::widgets::TextEdit::multiline(&mut self.vertex)
+                                    .font(egui::TextStyle::Monospace)
+                                    .frame(false)
+                                    .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
+                                    .layouter(&mut vertex_layouter);
+                                ui_inner.add_sized(desired, te);
+                            }
                         });
                     });
                 }
