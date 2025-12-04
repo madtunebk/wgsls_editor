@@ -282,28 +282,40 @@ impl eframe::App for TopApp {
                                         .id_source("fragment_editor")
                                         .show(ui_alloc, &mut self.fragment);
                                 }).response;
-                                // Overlay gear in top-right
-                                let size = egui::vec2(24.0, 24.0);
-                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
-                                let overlay_rect = egui::Rect::from_min_size(min, size);
-                                let icon = egui::RichText::new("⚙");
-                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
-                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
-                                    .id(egui::Id::new("fragment_scale_menu"))
-                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                                    .show(|ui_menu| {
-                                        ui_menu.label("Editor scale");
-                                        let mut s = self.ui_scale;
-                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
-                                            self.ui_scale = s;
-                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
-                                            let ctx = ui_menu.ctx();
-                                            let mut style = (*ctx.style()).clone();
-                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                                            ctx.set_style(style);
-                                        }
-                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
-                                    }) { }
+                                // Overlay gear in top-right (hover-only or while menu open)
+                                let menu_id = egui::Id::new("fragment_scale_menu");
+                                let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
+                                if show_gear {
+                                    let size = egui::vec2(24.0, 24.0);
+                                    let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                    let overlay_rect = egui::Rect::from_min_size(min, size);
+                                    let icon = egui::RichText::new("⚙");
+                                    let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                    if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                        .id(menu_id)
+                                        .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                        .show(|ui_menu| {
+                                            ui_menu.label("Editor scale");
+                                            let mut s = self.ui_scale;
+                                            if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                                self.ui_scale = s;
+                                                self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                            ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                            if ui_menu.button("Reset defaults").clicked() {
+                                                self.ui_scale = UI_SCALE;
+                                                self.editor_font_size = 18.0;
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                        }) { }
+                                }
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
@@ -319,28 +331,40 @@ impl eframe::App for TopApp {
                                     .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
                                     .layouter(&mut fragment_layouter);
                                 let editor_resp = ui_inner.add_sized(desired, te);
-                                // Overlay gear
-                                let size = egui::vec2(24.0, 24.0);
-                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
-                                let overlay_rect = egui::Rect::from_min_size(min, size);
-                                let icon = egui::RichText::new("⚙");
-                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
-                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
-                                    .id(egui::Id::new("fragment_scale_menu"))
-                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                                    .show(|ui_menu| {
-                                        ui_menu.label("Editor scale");
-                                        let mut s = self.ui_scale;
-                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
-                                            self.ui_scale = s;
-                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
-                                            let ctx = ui_menu.ctx();
-                                            let mut style = (*ctx.style()).clone();
-                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                                            ctx.set_style(style);
-                                        }
-                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
-                                    }) { }
+                                // Overlay gear (hover-only or while menu open)
+                                let menu_id = egui::Id::new("fragment_scale_menu");
+                                let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
+                                if show_gear {
+                                    let size = egui::vec2(24.0, 24.0);
+                                    let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                    let overlay_rect = egui::Rect::from_min_size(min, size);
+                                    let icon = egui::RichText::new("⚙");
+                                    let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                    if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                        .id(menu_id)
+                                        .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                        .show(|ui_menu| {
+                                            ui_menu.label("Editor scale");
+                                            let mut s = self.ui_scale;
+                                            if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                                self.ui_scale = s;
+                                                self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                            ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                            if ui_menu.button("Reset defaults").clicked() {
+                                                self.ui_scale = UI_SCALE;
+                                                self.editor_font_size = 18.0;
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                        }) { }
+                                }
                             }
                         });
                     });
@@ -357,27 +381,39 @@ impl eframe::App for TopApp {
                                         .id_source("vertex_editor")
                                         .show(ui_alloc, &mut self.vertex);
                                 }).response;
-                                let size = egui::vec2(24.0, 24.0);
-                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
-                                let overlay_rect = egui::Rect::from_min_size(min, size);
-                                let icon = egui::RichText::new("⚙");
-                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
-                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
-                                    .id(egui::Id::new("vertex_scale_menu"))
-                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                                    .show(|ui_menu| {
-                                        ui_menu.label("Editor scale");
-                                        let mut s = self.ui_scale;
-                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
-                                            self.ui_scale = s;
-                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
-                                            let ctx = ui_menu.ctx();
-                                            let mut style = (*ctx.style()).clone();
-                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                                            ctx.set_style(style);
-                                        }
-                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
-                                    }) { }
+                                let menu_id = egui::Id::new("vertex_scale_menu");
+                                let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
+                                if show_gear {
+                                    let size = egui::vec2(24.0, 24.0);
+                                    let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                    let overlay_rect = egui::Rect::from_min_size(min, size);
+                                    let icon = egui::RichText::new("⚙");
+                                    let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                    if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                        .id(menu_id)
+                                        .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                        .show(|ui_menu| {
+                                            ui_menu.label("Editor scale");
+                                            let mut s = self.ui_scale;
+                                            if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                                self.ui_scale = s;
+                                                self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                            ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                            if ui_menu.button("Reset defaults").clicked() {
+                                                self.ui_scale = UI_SCALE;
+                                                self.editor_font_size = 18.0;
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                        }) { }
+                                }
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
@@ -392,27 +428,39 @@ impl eframe::App for TopApp {
                                     .desired_rows((editor_h / (self.editor_font_size * 1.2)).floor() as usize)
                                     .layouter(&mut vertex_layouter);
                                 let editor_resp = ui_inner.add_sized(desired, te);
-                                let size = egui::vec2(24.0, 24.0);
-                                let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
-                                let overlay_rect = egui::Rect::from_min_size(min, size);
-                                let icon = egui::RichText::new("⚙");
-                                let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
-                                if let Some(_menu) = egui::Popup::menu(&btn_resp)
-                                    .id(egui::Id::new("vertex_scale_menu"))
-                                    .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                                    .show(|ui_menu| {
-                                        ui_menu.label("Editor scale");
-                                        let mut s = self.ui_scale;
-                                        if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
-                                            self.ui_scale = s;
-                                            self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
-                                            let ctx = ui_menu.ctx();
-                                            let mut style = (*ctx.style()).clone();
-                                            style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                                            ctx.set_style(style);
-                                        }
-                                        ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
-                                    }) { }
+                                let menu_id = egui::Id::new("vertex_scale_menu");
+                                let show_gear = editor_resp.hovered() || egui::Popup::is_id_open(ui_inner.ctx(), menu_id);
+                                if show_gear {
+                                    let size = egui::vec2(24.0, 24.0);
+                                    let min = egui::pos2(editor_resp.rect.right() - size.x - 6.0, editor_resp.rect.top() + 6.0);
+                                    let overlay_rect = egui::Rect::from_min_size(min, size);
+                                    let icon = egui::RichText::new("⚙");
+                                    let btn_resp = ui_inner.put(overlay_rect, egui::Button::new(icon).frame(true));
+                                    if let Some(_menu) = egui::Popup::menu(&btn_resp)
+                                        .id(menu_id)
+                                        .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                                        .show(|ui_menu| {
+                                            ui_menu.label("Editor scale");
+                                            let mut s = self.ui_scale;
+                                            if ui_menu.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                                                self.ui_scale = s;
+                                                self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                            ui_menu.label(format!("Font: {:.0} px", self.editor_font_size));
+                                            if ui_menu.button("Reset defaults").clicked() {
+                                                self.ui_scale = UI_SCALE;
+                                                self.editor_font_size = 18.0;
+                                                let ctx = ui_menu.ctx();
+                                                let mut style = (*ctx.style()).clone();
+                                                style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                                                ctx.set_style(style);
+                                            }
+                                        }) { }
+                                }
                             }
                         });
                     });
