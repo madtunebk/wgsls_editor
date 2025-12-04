@@ -90,6 +90,7 @@ struct TopApp {
     // UI state
     show_error_popup: bool,
     toast_mgr: ToastManager,
+    show_scale_popup: bool,
 
     // Cached syntax layout to avoid re-tokenizing every frame
     fragment_job: Option<egui::text::LayoutJob>,
@@ -123,6 +124,7 @@ impl TopApp {
             editor_font_size: 18.0,
             show_error_popup: false,
             toast_mgr: ToastManager::new(),
+            show_scale_popup: false,
 
             fragment_job: None,
             fragment_cached_src: String::new(),
@@ -286,11 +288,11 @@ impl eframe::App for TopApp {
                             #[cfg(not(feature = "code_editor"))]
                             {
                                 // Fallback: TextEdit with custom WGSL highlighter
-                                let mut fragment_layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                                    let mut job = layout_job_from_str(string, self.editor_font_size);
-                                    job.wrap.max_width = wrap_width;
-                                    ui.fonts(|f| f.layout_job(job))
-                                };
+                            let mut fragment_layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
+                                let mut job = layout_job_from_str(text.as_str(), self.editor_font_size);
+                                job.wrap.max_width = wrap_width;
+                                ui.painter().layout_job(job)
+                            };
                                 let te = egui::widgets::TextEdit::multiline(&mut self.fragment)
                                     .font(egui::TextStyle::Monospace)
                                     .frame(false)
@@ -316,11 +318,11 @@ impl eframe::App for TopApp {
                             }
                             #[cfg(not(feature = "code_editor"))]
                             {
-                                let mut vertex_layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                                    let mut job = layout_job_from_str(string, self.editor_font_size);
-                                    job.wrap.max_width = wrap_width;
-                                    ui.fonts(|f| f.layout_job(job))
-                                };
+                            let mut vertex_layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
+                                let mut job = layout_job_from_str(text.as_str(), self.editor_font_size);
+                                job.wrap.max_width = wrap_width;
+                                ui.painter().layout_job(job)
+                            };
                                 let te = egui::widgets::TextEdit::multiline(&mut self.vertex)
                                     .font(egui::TextStyle::Monospace)
                                     .frame(false)
@@ -361,21 +363,14 @@ impl eframe::App for TopApp {
                 }
             });
 
-            // Editor scale slider below buttons (full panel width) with numeric PX label
+            // Compact settings icon to toggle scale popup
             ui.add_space(6.0);
-            let slider_h = 28.0;
-            let slider_size = egui::Vec2::new(panel_w - 80.0, slider_h); // leave room for px label
             ui.horizontal(|ui| {
-                let mut s = self.ui_scale;
-                if ui.add_sized(slider_size, egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
-                    self.ui_scale = s;
-                    self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
-                    let ctx = ui.ctx();
-                    let mut style = (*ctx.style()).clone();
-                    style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
-                    ctx.set_style(style);
+                let icon = egui::RichText::new("⚙").size((self.editor_font_size * 0.9).clamp(14.0, 22.0));
+                let btn = egui::Button::new(icon).frame(true);
+                if ui.add(btn).on_hover_text("Editor scale & font size").clicked() {
+                    self.show_scale_popup = !self.show_scale_popup;
                 }
-                ui.add_space(8.0);
                 ui.label(format!("{:.0} px", self.editor_font_size));
             });
         });
@@ -429,6 +424,28 @@ impl eframe::App for TopApp {
         egui::Area::new(egui::Id::new("global_toasts")).anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::new(0.0, -80.0)).show(ctx, |ui| {
             self.toast_mgr.render(ui);
         });
+
+        // Scale settings popup window (minimal)
+        if self.show_scale_popup {
+            egui::Window::new("Editor Settings")
+                .resizable(false)
+                .collapsible(false)
+                .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(12.0, -12.0))
+                .show(ctx, |ui| {
+                    ui.label("Editor scale");
+                    let mut s = self.ui_scale;
+                    if ui.add(egui::Slider::new(&mut s, 1.0..=1.75)).changed() {
+                        self.ui_scale = s;
+                        self.editor_font_size = (14.0 * self.ui_scale).clamp(10.0, 36.0);
+                        let ctx = ui.ctx();
+                        let mut style = (*ctx.style()).clone();
+                        style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(self.editor_font_size));
+                        ctx.set_style(style);
+                    }
+                    ui.label(format!("Font: {:.0} px", self.editor_font_size));
+                    if ui.button("Close").clicked() { self.show_scale_popup = false; }
+                });
+        }
 
         ctx.request_repaint();
     }
