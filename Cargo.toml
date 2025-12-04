@@ -15,17 +15,13 @@ log = "0.4"
 env_logger = "0.10"
 type-map = "0.4"
 regex = "1.10"
+cpal = "0.15"
+rustfft = "6.2"
 
 [features]
 default = []
 code_editor = ["egui_code_editor"]
-renderer-bin = []
 
 [dependencies.egui_code_editor]
 version = "0.2.20"
 optional = true
-
-[[bin]]
-name = "renderer"
-path = "src/bin/renderer.rs"
-required-features = ["renderer-bin"]

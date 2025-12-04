@@ -113,6 +113,7 @@ impl ShaderPipeline {
 // Callback for rendering shader
 pub struct ShaderCallback {
     pub shader: Arc<ShaderPipeline>,
+    pub audio_state: Arc<crate::funcs::audio::AudioState>,
 }
 
 impl egui_wgpu::CallbackTrait for ShaderCallback {
@@ -131,11 +132,12 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
             screen_descriptor.size_in_pixels[1] as f32,
         ];
 
+        let (bass, mid, high) = self.audio_state.get_bands();
         let uniforms = ShaderUniforms {
             time: elapsed,
-            audio_bass: 0.0,
-            audio_mid: 0.0,
-            audio_high: 0.0,
+            audio_bass: bass,
+            audio_mid: mid,
+            audio_high: high,
             resolution,
             _pad0: [0.0, 0.0],
         };

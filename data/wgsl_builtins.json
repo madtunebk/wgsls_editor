@@ -1,0 +1,22 @@
+[
+  {
+    "label": "reflect",
+    "detail": "fn reflect(I: vecN<f32>, N: vecN<f32>) -> vecN<f32>",
+    "doc": "Reflect incident vector I about normal N.",
+    "insert_suffix": "()",
+    "kind": "function"
+  },
+  {
+    "label": "refract",
+    "detail": "fn refract(I: vecN<f32>, N: vecN<f32>, eta: f32) -> vecN<f32>",
+    "doc": "Refract incident vector I through normal N with ratio eta.",
+    "insert_suffix": "()",
+    "kind": "function"
+  },
+  {
+    "label": "@location",
+    "detail": "attribute",
+    "doc": "Assign a user-defined location to an input/output." ,
+    "kind": "attribute"
+  }
+]

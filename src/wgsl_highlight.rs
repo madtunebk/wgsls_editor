@@ -1,12 +1,15 @@
+#[cfg(not(feature = "code_editor"))]
 use eframe::egui::{text::{LayoutJob, TextFormat}, Color32, FontId};
 
 // Enhanced WGSL syntax highlighter. No external crates.
 // Highlights: keywords, types, attributes, intrinsics, address spaces, builtins, numbers, strings, comments, punctuation.
 
+#[cfg(not(feature = "code_editor"))]
 fn is_ident_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '.'
 }
 
+#[cfg(not(feature = "code_editor"))]
 fn peek_non_ws(chars: &[char], mut i: usize) -> Option<char> {
     while i < chars.len() {
         let c = chars[i];
@@ -16,9 +19,10 @@ fn peek_non_ws(chars: &[char], mut i: usize) -> Option<char> {
     None
 }
 
-pub fn layout_job_from_str(src: &str, font_size: f32) -> LayoutJob {
+#[cfg(not(feature = "code_editor"))]
+pub fn layout_job_from_str(src: &str, font_id: FontId) -> LayoutJob {
     let mut job = LayoutJob::default();
-    let mono = FontId::monospace(font_size);
+    let mono = font_id.clone();
 
     // Language keywords
     const KEYWORDS: &[&str] = &[
