@@ -20,6 +20,7 @@ rustfft = "6.2"
 naga = { version = "27", features = ["wgsl-in"] }
 rodio = "0.17"
 rfd = "0.15"
+chrono = "0.4"
 
 [features]
 default = ["code_editor"]

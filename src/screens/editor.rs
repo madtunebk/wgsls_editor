@@ -2,7 +2,7 @@ use eframe::egui;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::ui_components::settings_menu;
+use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
     format_shader_error, ShaderCallback, ShaderError, ShaderPipeline, ToastManager,
 };
@@ -240,133 +240,39 @@ impl eframe::App for TopApp {
             self.load_audio_file(path);
         }
 
-        // Preset menu overlay (renamed to Shader Properties)
-        let mut load_audio_request: Option<String> = None;
+        // Shader Properties window (using component)
         if self.show_preset_menu {
-            egui::Window::new("Shader Properties")
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .resizable(false)
-                .collapsible(false)
-                .default_size([380.0, 500.0])
-                .show(ctx, |ui| {
-                    ui.set_min_width(360.0);
-                    
-                    // Presets Section
-                    ui.group(|ui| {
-                        ui.heading("🎨 Shader Presets");
-                        ui.add_space(5.0);
-                        
-                        if ui.button("📊 Default (Audio Visualizer)").clicked() {
-                            self.load_preset_shader("default");
-                        }
-                        if ui.button("🌀 Psychedelic Spiral").clicked() {
-                            self.load_preset_shader("psychedelic");
-                        }
-                        if ui.button("🕳️ Infinite Tunnel").clicked() {
-                            self.load_preset_shader("tunnel");
-                        }
-                        if ui.button("📦 Raymarched Boxes").clicked() {
-                            self.load_preset_shader("raymarch");
-                        }
-                        if ui.button("🌌 Julia Set Fractal").clicked() {
-                            self.load_preset_shader("fractal");
-                        }
-                    });
-                    
-                    ui.add_space(10.0);
-                    
-                    // Audio Section
-                    ui.group(|ui| {
-                        ui.heading("🎵 Audio");
-                        ui.add_space(5.0);
-                        
-                        // Audio file selection
-                        ui.label(egui::RichText::new("Audio File:").strong());
-                        ui.horizontal(|ui| {
-                            let file_text = if let Some(path) = &self.audio_file_path {
-                                std::path::Path::new(path)
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("Unknown")
-                                    .to_string()
-                            } else {
-                                "No audio loaded".to_string()
-                            };
-                            
-                            ui.label(
-                                egui::RichText::new(file_text)
-                                    .monospace()
-                                    .color(if self.audio_file_path.is_some() {
-                                        egui::Color32::from_rgb(100, 200, 100)
-                                    } else {
-                                        egui::Color32::from_rgb(150, 150, 150)
-                                    })
-                            );
-                        });
+            let action = shader_properties::render(
+                ctx,
+                &mut self.show_preset_menu,
+                &self.audio_file_path,
+                &mut self.debug_audio,
+                &mut self.debug_bass,
+                &mut self.debug_mid,
+                &mut self.debug_high,
+                &self.bass_energy,
+                &self.mid_energy,
+                &self.high_energy,
+            );
 
-                        ui.add_space(5.0);
-
-                        if ui.button("📁 Load Audio File...").clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter("Audio", &["mp3", "wav", "ogg", "flac"])
-                                .pick_file()
-                            {
-                                load_audio_request = Some(path.to_string_lossy().to_string());
-                            }
-                        }
-
-                        ui.add_space(5.0);
-                        ui.separator();
-                        ui.add_space(5.0);
-
-                        ui.checkbox(&mut self.debug_audio, "Debug Mode (Manual Control)");
-
-                        ui.add_space(5.0);
-
-                        if self.debug_audio {
-                            ui.label(egui::RichText::new("Manual Controls:").strong());
-                            ui.add(egui::Slider::new(&mut self.debug_bass, 0.0..=1.0).text("Bass (Low)"));
-                            ui.add(egui::Slider::new(&mut self.debug_mid, 0.0..=1.0).text("Mid"));
-                            ui.add(egui::Slider::new(&mut self.debug_high, 0.0..=1.0).text("High"));
-                        } else {
-                            ui.label(egui::RichText::new("Live Audio Levels:").strong());
-                            let bass = *self.bass_energy.lock().unwrap();
-                            let mid = *self.mid_energy.lock().unwrap();
-                            let high = *self.high_energy.lock().unwrap();
-
-                            ui.horizontal(|ui| {
-                                ui.label("Bass:");
-                                ui.add(egui::ProgressBar::new(bass).text(format!("{:.2}", bass)));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Mid:  ");
-                                ui.add(egui::ProgressBar::new(mid).text(format!("{:.2}", mid)));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("High:");
-                                ui.add(egui::ProgressBar::new(high).text(format!("{:.2}", high)));
-                            });
-                        }
-                    });
-                    
-                    ui.add_space(10.0);
-                    
-                    ui.vertical_centered(|ui| {
-                        if ui.button(egui::RichText::new("Close").size(15.0)).clicked() {
-                            self.show_preset_menu = false;
-                        }
-                    });
-                });
-        }
-        
-        // Handle audio file loading request
-        if let Some(path) = load_audio_request {
-            self.load_audio_file(path);
+            match action {
+                shader_properties::ShaderPropertiesAction::LoadPreset(name) => {
+                    self.load_preset_shader(&name);
+                }
+                shader_properties::ShaderPropertiesAction::LoadAudioFile(path) => {
+                    self.load_audio_file(path);
+                }
+                shader_properties::ShaderPropertiesAction::ExportShard => {
+                    self.export_shard();
+                }
+                shader_properties::ShaderPropertiesAction::None => {}
+            }
         }
 
         // Toast notifications - only show window if there are active toasts
         if self.toast_mgr.has_toasts() {
             egui::Window::new("")
+                .id(egui::Id::new("toast_notifications_window"))
                 .title_bar(false)
                 .anchor(egui::Align2::RIGHT_BOTTOM, [-10.0, -10.0])
                 .frame(egui::Frame::NONE)
@@ -378,6 +284,7 @@ impl eframe::App for TopApp {
         // Error window - native egui error display with proper font
         if self.show_error_window {
             egui::Window::new("Shader Error")
+                .id(egui::Id::new("shader_error_window"))
                 .collapsible(false)
                 .resizable(true)
                 .default_size([600.0, 450.0])
@@ -445,7 +352,7 @@ impl TopApp {
                     // Fragment tab (represents Main Image)
                     let fragment_selected = self.active_tab == 0 && self.current_buffer == BufferType::MainImage;
                     let fragment_button = egui::Button::new(
-                        egui::RichText::new("📝 Fragment").size(12.0)
+                        egui::RichText::new("Fragment").size(12.0)
                     )
                     .selected(fragment_selected)
                     .min_size(egui::vec2(tab_width, tab_h));
@@ -458,30 +365,35 @@ impl TopApp {
                     ui.add_space(4.0);
                     
                     // Buffer tabs (A, B, C, D only - skip MainImage)
-                    for buffer in BufferType::all() {
-                        if buffer == BufferType::MainImage {
-                            continue; // Skip Main Image, it's represented by Fragment tab
-                        }
-                        
-                        let is_current = buffer == self.current_buffer && self.active_tab == 0;
-                        let button = egui::Button::new(
-                            egui::RichText::new(buffer.as_str()).size(12.0)
-                        )
-                        .selected(is_current)
-                        .min_size(egui::vec2(tab_width, tab_h));
-                        
-                        if ui.add(button).clicked() {
-                            self.active_tab = 0;
-                            self.switch_buffer(buffer);
-                        }
-                        
-                        ui.add_space(4.0);
+                    let buffer_data = [
+                        (BufferType::BufferA, "buffer_a_tab", "Buffer A"),
+                        (BufferType::BufferB, "buffer_b_tab", "Buffer B"),
+                        (BufferType::BufferC, "buffer_c_tab", "Buffer C"),
+                        (BufferType::BufferD, "buffer_d_tab", "Buffer D"),
+                    ];
+                    
+                    for (buffer, id, label) in buffer_data {
+                        ui.push_id(id, |ui| {
+                            let is_current = buffer == self.current_buffer && self.active_tab == 0;
+                            let button = egui::Button::new(
+                                egui::RichText::new(label).size(12.0)
+                            )
+                            .selected(is_current)
+                            .min_size(egui::vec2(tab_width, tab_h));
+                            
+                            if ui.add(button).clicked() {
+                                self.active_tab = 0;
+                                self.switch_buffer(buffer);
+                            }
+                            
+                            ui.add_space(4.0);
+                        });
                     }
                     
                     // Vertex tab
                     let vertex_selected = self.active_tab == 1;
                     let vertex_button = egui::Button::new(
-                        egui::RichText::new("⚡ Vertex").size(12.0)
+                        egui::RichText::new("Vertex").size(12.0)
                     )
                     .selected(vertex_selected)
                     .min_size(egui::vec2(tab_width, tab_h));
@@ -646,6 +558,7 @@ impl TopApp {
                         .with_syntax(wgsl_syntax::wgsl())
                         .with_numlines(true)
                         .vscroll(true)
+                        .auto_shrink(false)
                         .show(ui, fragment_code);
                 } else {
                     // Vertex shader editor
@@ -657,6 +570,7 @@ impl TopApp {
                         .with_syntax(wgsl_syntax::wgsl())
                         .with_numlines(true)
                         .vscroll(true)
+                        .auto_shrink(false)
                         .show(ui, vertex_code);
                 }
             }
@@ -819,5 +733,82 @@ impl TopApp {
         self.apply_shader();
         self.toast_mgr.show_success(&format!("Loaded preset: {}", name));
         log::info!("Loaded preset shader: {}", name);
+    }
+
+    fn export_shard(&mut self) {
+        use std::io::Write;
+
+        // Open save dialog
+        let file_path = match rfd::FileDialog::new()
+            .add_filter("WGSLS Shader", &["wgsls"])
+            .set_file_name("output.wgsls")
+            .save_file()
+        {
+            Some(path) => path,
+            None => return, // User cancelled
+        };
+
+        // Build readable text format
+        let mut content = String::new();
+        
+        // Header
+        content.push_str("// WebShard Shader Export\n");
+        content.push_str(&format!("// Exported: {}\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+        content.push_str("// Format Version: 1.0\n");
+        content.push_str("//\n");
+        content.push_str("// Note: All buffers share the same vertex shader (defined once below).\n");
+        content.push_str("// Only fragment shaders differ per buffer.\n");
+        content.push_str("\n");
+        
+        // Export SHARED vertex shader (only once)
+        content.push_str("// ========== SHARED VERTEX SHADER ==========\n");
+        if let Some((vertex, _)) = self.buffer_shaders.get(&BufferType::MainImage) {
+            content.push_str(vertex);
+            if !vertex.ends_with('\n') {
+                content.push('\n');
+            }
+        }
+        content.push_str("// ========== END SHARED VERTEX SHADER ==========\n\n");
+        
+        // Export fragment shaders for each buffer
+        for buffer_type in BufferType::all() {
+            if let Some((_, fragment)) = self.buffer_shaders.get(&buffer_type) {
+                let buffer_name = match buffer_type {
+                    BufferType::MainImage => "MAIN_IMAGE",
+                    BufferType::BufferA => "BUFFER_A",
+                    BufferType::BufferB => "BUFFER_B",
+                    BufferType::BufferC => "BUFFER_C",
+                    BufferType::BufferD => "BUFFER_D",
+                };
+                
+                // Fragment shader section only
+                content.push_str(&format!("// ========== {} FRAGMENT ==========\n", buffer_name));
+                content.push_str(fragment);
+                if !fragment.ends_with('\n') {
+                    content.push('\n');
+                }
+                content.push_str(&format!("// ========== END {} FRAGMENT ==========\n\n", buffer_name));
+            }
+        }
+
+        // Write to file
+        match std::fs::File::create(&file_path) {
+            Ok(mut file) => {
+                if let Err(e) = file.write_all(content.as_bytes()) {
+                    self.toast_mgr.show_error(&format!("Failed to write file: {}", e));
+                    log::error!("Failed to write shard file: {}", e);
+                } else {
+                    let filename = file_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("output.wgsls");
+                    self.toast_mgr.show_success(&format!("Exported: {}", filename));
+                    log::info!("Exported shard to: {:?}", file_path);
+                }
+            }
+            Err(e) => {
+                self.toast_mgr.show_error(&format!("Failed to create file: {}", e));
+                log::error!("Failed to create shard file: {}", e);
+            }
+        }
     }
 }

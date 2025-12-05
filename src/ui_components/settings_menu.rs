@@ -35,6 +35,7 @@ pub fn settings_overlay(
 
     // Center modal window
     egui::Window::new("⚙ Settings")
+        .id(egui::Id::new("settings_window"))
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .resizable(false)
         .collapsible(false)
@@ -43,6 +44,7 @@ pub fn settings_overlay(
             ui.add_space(5.0);
 
             // Editor Section
+            ui.push_id("editor_section", |ui| {
             ui.group(|ui| {
                 ui.set_min_width(320.0);
                 ui.heading("📝 Editor");
@@ -51,7 +53,7 @@ pub fn settings_overlay(
                 ui.horizontal(|ui| {
                     ui.label("Font Size:");
                     ui.add_space(10.0);
-                    ui.add(egui::Slider::new(editor_font_size, 10.0..=48.0).text("px"));
+                    ui.add(egui::Slider::new(editor_font_size, 10.0..=24.0).text("px"));
                 });
 
                 ui.horizontal(|ui| {
@@ -64,10 +66,12 @@ pub fn settings_overlay(
                     );
                 });
             });
+            });
 
             ui.add_space(10.0);
 
             // Audio Section
+            ui.push_id("audio_section", |ui| {
             ui.group(|ui| {
                 ui.set_min_width(320.0);
                 ui.heading("🎵 Audio Visualization");
@@ -145,8 +149,9 @@ pub fn settings_overlay(
                     });
                 }
             });
+            });
 
-            ui.add_space(15.0);
+            ui.add_space(10.0);
 
             // Close button
             ui.vertical_centered(|ui| {
