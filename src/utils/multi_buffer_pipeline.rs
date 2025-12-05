@@ -174,9 +174,69 @@ impl MultiPassPipelines {
                     },
                     count: None,
                 },
-                // Sampler @binding(1)
+                // Sampler A @binding(1)
                 eframe::wgpu::BindGroupLayoutEntry {
                     binding: 1,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Sampler(
+                        eframe::wgpu::SamplerBindingType::Filtering,
+                    ),
+                    count: None,
+                },
+                // Buffer B texture @binding(2)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Texture {
+                        sample_type: eframe::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: eframe::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // Sampler B @binding(3)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Sampler(
+                        eframe::wgpu::SamplerBindingType::Filtering,
+                    ),
+                    count: None,
+                },
+                // Buffer C texture @binding(4)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Texture {
+                        sample_type: eframe::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: eframe::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // Sampler C @binding(5)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Sampler(
+                        eframe::wgpu::SamplerBindingType::Filtering,
+                    ),
+                    count: None,
+                },
+                // Buffer D texture @binding(6)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Texture {
+                        sample_type: eframe::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: eframe::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // Sampler D @binding(7)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 7,
                     visibility: eframe::wgpu::ShaderStages::FRAGMENT,
                     ty: eframe::wgpu::BindingType::Sampler(
                         eframe::wgpu::SamplerBindingType::Filtering,
@@ -273,6 +333,207 @@ impl MultiPassPipelines {
             None
         };
 
+        // ===== BUFFER B: offscreen pass (optional) =====
+        let buffer_b = if let Some(buffer_b_src) = sources.get(&BufferKind::BufferB) {
+            if buffer_b_src.trim().is_empty() {
+                log::debug!("BufferB is empty, skipping");
+                None
+            } else {
+                let has_code = buffer_b_src.contains("fn fs_main") || buffer_b_src.contains("@fragment");
+                if !has_code {
+                    log::debug!("BufferB has no fragment shader code, skipping");
+                    None
+                } else {
+                    log::debug!("Creating BufferB pass");
+                    if let Err(e) = validate_shader(buffer_b_src) {
+                        log::warn!("[BufferB] Validation failed, skipping: {}", e);
+                        None
+                    } else {
+                        let buffer_b_module = device.create_shader_module(eframe::wgpu::ShaderModuleDescriptor {
+                            label: Some("buffer_b_shader"),
+                            source: eframe::wgpu::ShaderSource::Wgsl(buffer_b_src.clone().into()),
+                        });
+                        let (buffer_b_tex, buffer_b_view) =
+                            create_color_target(device, screen_size, format, "buffer_b_target");
+                        let buffer_b_pipeline_layout =
+                            device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
+                                label: Some("buffer_b_pipeline_layout"),
+                                bind_group_layouts: &[&uniform_bgl],
+                                push_constant_ranges: &[],
+                            });
+                        let buffer_b_pipeline =
+                            device.create_render_pipeline(&eframe::wgpu::RenderPipelineDescriptor {
+                                label: Some("buffer_b_pipeline"),
+                                layout: Some(&buffer_b_pipeline_layout),
+                                vertex: eframe::wgpu::VertexState {
+                                    module: &buffer_b_module,
+                                    entry_point: Some("vs_main"),
+                                    compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                    buffers: &[],
+                                },
+                                fragment: Some(eframe::wgpu::FragmentState {
+                                    module: &buffer_b_module,
+                                    entry_point: Some("fs_main"),
+                                    compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                    targets: &[Some(eframe::wgpu::ColorTargetState {
+                                        format,
+                                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                        write_mask: eframe::wgpu::ColorWrites::ALL,
+                                    })],
+                                }),
+                                primitive: eframe::wgpu::PrimitiveState::default(),
+                                depth_stencil: None,
+                                multisample: eframe::wgpu::MultisampleState::default(),
+                                multiview: None,
+                                cache: None,
+                            });
+                        Some(BufferPass {
+                            kind: BufferKind::BufferB,
+                            pipeline: buffer_b_pipeline,
+                            target_texture: buffer_b_tex,
+                            target_view: buffer_b_view,
+                        })
+                    }
+                }
+            }
+        } else {
+            None
+        };
+
+        // ===== BUFFER C: offscreen pass (optional) =====
+        let buffer_c = if let Some(buffer_c_src) = sources.get(&BufferKind::BufferC) {
+            if buffer_c_src.trim().is_empty() {
+                log::debug!("BufferC is empty, skipping");
+                None
+            } else {
+                let has_code = buffer_c_src.contains("fn fs_main") || buffer_c_src.contains("@fragment");
+                if !has_code {
+                    log::debug!("BufferC has no fragment shader code, skipping");
+                    None
+                } else {
+                    log::debug!("Creating BufferC pass");
+                    if let Err(e) = validate_shader(buffer_c_src) {
+                        log::warn!("[BufferC] Validation failed, skipping: {}", e);
+                        None
+                    } else {
+                        let buffer_c_module = device.create_shader_module(eframe::wgpu::ShaderModuleDescriptor {
+                            label: Some("buffer_c_shader"),
+                            source: eframe::wgpu::ShaderSource::Wgsl(buffer_c_src.clone().into()),
+                        });
+                        let (buffer_c_tex, buffer_c_view) =
+                            create_color_target(device, screen_size, format, "buffer_c_target");
+                        let buffer_c_pipeline_layout =
+                            device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
+                                label: Some("buffer_c_pipeline_layout"),
+                                bind_group_layouts: &[&uniform_bgl],
+                                push_constant_ranges: &[],
+                            });
+                        let buffer_c_pipeline =
+                            device.create_render_pipeline(&eframe::wgpu::RenderPipelineDescriptor {
+                                label: Some("buffer_c_pipeline"),
+                                layout: Some(&buffer_c_pipeline_layout),
+                                vertex: eframe::wgpu::VertexState {
+                                    module: &buffer_c_module,
+                                    entry_point: Some("vs_main"),
+                                    compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                    buffers: &[],
+                                },
+                                fragment: Some(eframe::wgpu::FragmentState {
+                                    module: &buffer_c_module,
+                                    entry_point: Some("fs_main"),
+                                    compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                    targets: &[Some(eframe::wgpu::ColorTargetState {
+                                        format,
+                                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                        write_mask: eframe::wgpu::ColorWrites::ALL,
+                                    })],
+                                }),
+                                primitive: eframe::wgpu::PrimitiveState::default(),
+                                depth_stencil: None,
+                                multisample: eframe::wgpu::MultisampleState::default(),
+                                multiview: None,
+                                cache: None,
+                            });
+                        Some(BufferPass {
+                            kind: BufferKind::BufferC,
+                            pipeline: buffer_c_pipeline,
+                            target_texture: buffer_c_tex,
+                            target_view: buffer_c_view,
+                        })
+                    }
+                }
+            }
+        } else {
+            None
+        };
+
+        // ===== BUFFER D: offscreen pass (optional) =====
+        let buffer_d = if let Some(buffer_d_src) = sources.get(&BufferKind::BufferD) {
+            if buffer_d_src.trim().is_empty() {
+                log::debug!("BufferD is empty, skipping");
+                None
+            } else {
+                let has_code = buffer_d_src.contains("fn fs_main") || buffer_d_src.contains("@fragment");
+                if !has_code {
+                    log::debug!("BufferD has no fragment shader code, skipping");
+                    None
+                } else {
+                    log::debug!("Creating BufferD pass");
+                    if let Err(e) = validate_shader(buffer_d_src) {
+                        log::warn!("[BufferD] Validation failed, skipping: {}", e);
+                        None
+                    } else {
+                        let buffer_d_module = device.create_shader_module(eframe::wgpu::ShaderModuleDescriptor {
+                            label: Some("buffer_d_shader"),
+                            source: eframe::wgpu::ShaderSource::Wgsl(buffer_d_src.clone().into()),
+                        });
+                        let (buffer_d_tex, buffer_d_view) =
+                            create_color_target(device, screen_size, format, "buffer_d_target");
+                        let buffer_d_pipeline_layout =
+                            device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
+                                label: Some("buffer_d_pipeline_layout"),
+                                bind_group_layouts: &[&uniform_bgl],
+                                push_constant_ranges: &[],
+                            });
+                        let buffer_d_pipeline =
+                            device.create_render_pipeline(&eframe::wgpu::RenderPipelineDescriptor {
+                                label: Some("buffer_d_pipeline"),
+                                layout: Some(&buffer_d_pipeline_layout),
+                                vertex: eframe::wgpu::VertexState {
+                                    module: &buffer_d_module,
+                                    entry_point: Some("vs_main"),
+                                    compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                    buffers: &[],
+                                },
+                                fragment: Some(eframe::wgpu::FragmentState {
+                                    module: &buffer_d_module,
+                                    entry_point: Some("fs_main"),
+                                    compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                    targets: &[Some(eframe::wgpu::ColorTargetState {
+                                        format,
+                                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                        write_mask: eframe::wgpu::ColorWrites::ALL,
+                                    })],
+                                }),
+                                primitive: eframe::wgpu::PrimitiveState::default(),
+                                depth_stencil: None,
+                                multisample: eframe::wgpu::MultisampleState::default(),
+                                multiview: None,
+                                cache: None,
+                            });
+                        Some(BufferPass {
+                            kind: BufferKind::BufferD,
+                            pipeline: buffer_d_pipeline,
+                            target_texture: buffer_d_tex,
+                            target_view: buffer_d_view,
+                        })
+                    }
+                }
+            }
+        } else {
+            None
+        };
+
         // ===== MAIN IMAGE: reads BufferA texture =====
         let main_src = sources
             .get(&BufferKind::MainImage)
@@ -326,40 +587,64 @@ impl MultiPassPipelines {
                 cache: None,
             });
 
-        // ===== Bind group for MainImage to read BufferA texture =====
-        let main_tex_bg = if let Some(ref buffer_a_pass) = buffer_a {
-            device.create_bind_group(&eframe::wgpu::BindGroupDescriptor {
-                label: Some("main_texture_bg"),
-                layout: &texture_bgl,
-                entries: &[
-                    eframe::wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: eframe::wgpu::BindingResource::TextureView(&buffer_a_pass.target_view),
-                    },
-                    eframe::wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: eframe::wgpu::BindingResource::Sampler(&sampler),
-                    },
-                ],
-            })
-        } else {
-            // If no BufferA, create a dummy 1x1 black texture
-            let (dummy_tex, dummy_view) = create_color_target(device, [1, 1], format, "dummy_texture");
-            device.create_bind_group(&eframe::wgpu::BindGroupDescriptor {
-                label: Some("main_texture_bg_dummy"),
-                layout: &texture_bgl,
-                entries: &[
-                    eframe::wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: eframe::wgpu::BindingResource::TextureView(&dummy_view),
-                    },
-                    eframe::wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: eframe::wgpu::BindingResource::Sampler(&sampler),
-                    },
-                ],
-            })
-        };
+        // ===== Bind group for MainImage to read all buffer textures =====
+        // Create dummy texture for any missing buffers
+        let (dummy_tex, dummy_view) = create_color_target(device, [1, 1], format, "dummy_texture");
+        
+        let main_tex_bg = device.create_bind_group(&eframe::wgpu::BindGroupDescriptor {
+            label: Some("main_texture_bg"),
+            layout: &texture_bgl,
+            entries: &[
+                // BufferA @binding(0)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        if let Some(ref ba) = buffer_a { &ba.target_view } else { &dummy_view }
+                    ),
+                },
+                // Sampler A @binding(1)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+                // BufferB @binding(2)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        if let Some(ref bb) = buffer_b { &bb.target_view } else { &dummy_view }
+                    ),
+                },
+                // Sampler B @binding(3)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+                // BufferC @binding(4)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        if let Some(ref bc) = buffer_c { &bc.target_view } else { &dummy_view }
+                    ),
+                },
+                // Sampler C @binding(5)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+                // BufferD @binding(6)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        if let Some(ref bd) = buffer_d { &bd.target_view } else { &dummy_view }
+                    ),
+                },
+                // Sampler D @binding(7)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
 
         log::info!("Multi-pass shader pipeline created successfully");
 
@@ -369,9 +654,9 @@ impl MultiPassPipelines {
             texture_bind_group_layout: texture_bgl,
             uniform_bind_group: uniform_bg,
             buffer_a,
-            buffer_b: None, // TODO: Implement later
-            buffer_c: None,
-            buffer_d: None,
+            buffer_b,
+            buffer_c,
+            buffer_d,
             main_image_pipeline: main_pipeline,
             main_texture_bind_group: main_tex_bg,
             sampler,
@@ -462,6 +747,15 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
         // Render buffer passes to offscreen textures
         if let Some(ref buffer_a) = self.shader.buffer_a {
             buffer_a.render(encoder, &self.shader.uniform_bind_group);
+        }
+        if let Some(ref buffer_b) = self.shader.buffer_b {
+            buffer_b.render(encoder, &self.shader.uniform_bind_group);
+        }
+        if let Some(ref buffer_c) = self.shader.buffer_c {
+            buffer_c.render(encoder, &self.shader.uniform_bind_group);
+        }
+        if let Some(ref buffer_d) = self.shader.buffer_d {
+            buffer_d.render(encoder, &self.shader.uniform_bind_group);
         }
 
         Vec::new()
