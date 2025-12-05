@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
-    format_shader_error, ShaderCallback, ShaderError, ShaderPipeline, ToastManager,
+    format_shader_error, BufferKind, MultiPassCallback, MultiPassPipelines, ShaderError,
+    ToastManager,
 };
 #[cfg(feature = "code_editor")]
 use crate::utils::wgsl_syntax;
@@ -13,46 +14,15 @@ use crate::utils::wgsl_syntax;
 const DEFAULT_VERTEX: &str = include_str!("../assets/shards/default.vert");
 const DEFAULT_FRAGMENT: &str = include_str!("../assets/shards/default.frag");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum BufferType {
-    MainImage,
-    BufferA,
-    BufferB,
-    BufferC,
-    BufferD,
-}
-
-impl BufferType {
-    fn as_str(&self) -> &'static str {
-        match self {
-            BufferType::MainImage => "Main Image",
-            BufferType::BufferA => "Buffer A",
-            BufferType::BufferB => "Buffer B",
-            BufferType::BufferC => "Buffer C",
-            BufferType::BufferD => "Buffer D",
-        }
-    }
-
-    fn all() -> Vec<BufferType> {
-        vec![
-            BufferType::MainImage,
-            BufferType::BufferA,
-            BufferType::BufferB,
-            BufferType::BufferC,
-            BufferType::BufferD,
-        ]
-    }
-}
-
 pub struct TopApp {
     // Buffer system
-    current_buffer: BufferType,
-    buffer_shaders: std::collections::HashMap<BufferType, (String, String)>, // (vertex, fragment)
-    saved_shaders: Option<std::collections::HashMap<BufferType, (String, String)>>, // Saved state for Ctrl+S
+    current_buffer: BufferKind,
+    buffer_shaders: std::collections::HashMap<BufferKind, (String, String)>, // (vertex, fragment)
+    saved_shaders: Option<std::collections::HashMap<BufferKind, (String, String)>>, // Saved state for Ctrl+S
     active_tab: u8, // 0 = Fragment, 1 = Vertex
 
-    // Shader pipeline
-    shader_shared: Arc<Mutex<Option<Arc<ShaderPipeline>>>>,
+    // Multi-pass shader pipeline
+    shader_shared: Arc<Mutex<Option<Arc<MultiPassPipelines>>>>,
     shader_needs_update: Arc<AtomicBool>,
     last_error: Arc<Mutex<Option<ShaderError>>>,
     target_format: Option<egui_wgpu::wgpu::TextureFormat>,
@@ -85,28 +55,28 @@ impl TopApp {
         // Initialize buffer shaders
         let mut buffer_shaders = std::collections::HashMap::new();
         buffer_shaders.insert(
-            BufferType::MainImage,
+            BufferKind::MainImage,
             (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string()),
         );
         buffer_shaders.insert(
-            BufferType::BufferA,
+            BufferKind::BufferA,
             (DEFAULT_VERTEX.to_string(), "// Buffer A\n".to_string()),
         );
         buffer_shaders.insert(
-            BufferType::BufferB,
+            BufferKind::BufferB,
             (DEFAULT_VERTEX.to_string(), "// Buffer B\n".to_string()),
         );
         buffer_shaders.insert(
-            BufferType::BufferC,
+            BufferKind::BufferC,
             (DEFAULT_VERTEX.to_string(), "// Buffer C\n".to_string()),
         );
         buffer_shaders.insert(
-            BufferType::BufferD,
+            BufferKind::BufferD,
             (DEFAULT_VERTEX.to_string(), "// Buffer D\n".to_string()),
         );
         
         let mut app = Self {
-            current_buffer: BufferType::MainImage,
+            current_buffer: BufferKind::MainImage,
             buffer_shaders,
             saved_shaders: None,
             active_tab: 0,
@@ -142,16 +112,18 @@ impl TopApp {
             let format = render_state.target_format;
             app.target_format = Some(format);
 
-            let (vertex_src, fragment_src) = app
-                .buffer_shaders
-                .get(&BufferType::MainImage)
-                .cloned()
-                .unwrap_or_else(|| {
-                    (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string())
-                });
+            // Build sources map for initial compilation
+            let mut sources = std::collections::HashMap::new();
+            for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
+                if let Some((vertex, fragment)) = app.buffer_shaders.get(&buffer_kind) {
+                    let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
+                    sources.insert(buffer_kind, combined);
+                }
+            }
+
+            let screen_size = [1920, 1080]; // Initial buffer resolution
             
-            let combined = format!("{}\n\n{}", vertex_src, fragment_src);
-            match ShaderPipeline::new(&device, format, &combined) {
+            match MultiPassPipelines::new(&device, format, screen_size, &sources) {
                 Ok(pipeline) => {
                     *app.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
                 }
@@ -179,36 +151,41 @@ impl eframe::App for TopApp {
 
         // Handle shader compilation if needed
         if self.shader_needs_update.load(Ordering::Relaxed) {
-            log::debug!("Shader update requested, beginning compilation");
+            log::debug!("Shader update requested, beginning multi-pass compilation");
             self.shader_needs_update.store(false, Ordering::Relaxed);
 
             if let Some(render_state) = frame.wgpu_render_state() {
                 let device = &render_state.device;
                 let format = render_state.target_format;
                 
-                // Always compile the Main Image buffer for rendering (final output)
-                let (vertex_clean, fragment_clean) = self
-                    .buffer_shaders
-                    .get(&BufferType::MainImage)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string())
-                    });
+                // Build sources map for all buffers
+                let mut sources = std::collections::HashMap::new();
                 
-                let combined = format!("{}\n\n{}", vertex_clean.trim(), fragment_clean.trim());
+                for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
+                    if let Some((vertex, fragment)) = self.buffer_shaders.get(&buffer_kind) {
+                        let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
+                        sources.insert(buffer_kind, combined);
+                    }
+                }
                 
-                log::debug!(
-                    "[TopApp] Compiling Main Image - shader length: {} bytes",
-                    combined.len()
-                );
+                // Ensure MainImage exists
+                if !sources.contains_key(&BufferKind::MainImage) {
+                    let default_combined = format!("{}\n\n{}", DEFAULT_VERTEX.trim(), DEFAULT_FRAGMENT.trim());
+                    sources.insert(BufferKind::MainImage, default_combined);
+                }
+                
+                log::debug!("[TopApp] Compiling multi-pass pipeline with {} buffers", sources.len());
 
-                match ShaderPipeline::new(device, format, &combined) {
+                // Get screen size for buffer resolution (use a reasonable default)
+                let screen_size = [1920, 1080]; // TODO: Get actual viewport size
+
+                match MultiPassPipelines::new(device, format, screen_size, &sources) {
                     Ok(pipeline) => {
                         *self.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
                         *self.last_error.lock().unwrap() = None;
                         self.toast_mgr.dismiss_all();
-                        self.toast_mgr.show_success("Shader compiled successfully!");
-                        log::info!("[TopApp] Shader compiled successfully");
+                        self.toast_mgr.show_success("Multi-pass shader compiled successfully!");
+                        log::info!("[TopApp] Multi-pass shader compiled successfully");
                     }
                     Err(err) => {
                         *self.last_error.lock().unwrap() = Some(err.clone());
@@ -362,7 +339,7 @@ impl TopApp {
                     
                     // Fragment tab (represents Main Image)
                     let fragment_selected =
-                        self.active_tab == 0 && self.current_buffer == BufferType::MainImage;
+                        self.active_tab == 0 && self.current_buffer == BufferKind::MainImage;
                     let fragment_button = egui::Button::new(
                         egui::RichText::new("Fragment").size(12.0),
                     )
@@ -371,14 +348,14 @@ impl TopApp {
                     
                     if ui.add(fragment_button).clicked() {
                         self.active_tab = 0;
-                        self.switch_buffer(BufferType::MainImage);
+                        self.switch_buffer(BufferKind::MainImage);
                     }
                     
                     ui.add_space(4.0);
                     
                     // Buffer A tab
                     let is_buffer_a =
-                        self.current_buffer == BufferType::BufferA && self.active_tab == 0;
+                        self.current_buffer == BufferKind::BufferA && self.active_tab == 0;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -389,12 +366,12 @@ impl TopApp {
                     )
                     .clicked()
                     {
-                        self.switch_buffer(BufferType::BufferA);
+                        self.switch_buffer(BufferKind::BufferA);
                     }                    ui.add_space(4.0);
                     
                     // Buffer B tab
                     let is_buffer_b =
-                        self.current_buffer == BufferType::BufferB && self.active_tab == 0;
+                        self.current_buffer == BufferKind::BufferB && self.active_tab == 0;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -405,12 +382,12 @@ impl TopApp {
                     )
                     .clicked()
                     {
-                        self.switch_buffer(BufferType::BufferB);
+                        self.switch_buffer(BufferKind::BufferB);
                     }                    ui.add_space(4.0);
                     
                     // Buffer C tab
                     let is_buffer_c =
-                        self.current_buffer == BufferType::BufferC && self.active_tab == 0;
+                        self.current_buffer == BufferKind::BufferC && self.active_tab == 0;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -421,12 +398,12 @@ impl TopApp {
                     )
                     .clicked()
                     {
-                        self.switch_buffer(BufferType::BufferC);
+                        self.switch_buffer(BufferKind::BufferC);
                     }                    ui.add_space(4.0);
                     
                     // Buffer D tab
                     let is_buffer_d =
-                        self.current_buffer == BufferType::BufferD && self.active_tab == 0;
+                        self.current_buffer == BufferKind::BufferD && self.active_tab == 0;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -437,7 +414,7 @@ impl TopApp {
                     )
                     .clicked()
                     {
-                        self.switch_buffer(BufferType::BufferD);
+                        self.switch_buffer(BufferKind::BufferD);
                     }                    ui.add_space(4.0);
                     
                     // Vertex tab
@@ -668,7 +645,7 @@ impl TopApp {
                 *self.high_energy.lock().unwrap() = self.debug_high;
             }
 
-            let cb = ShaderCallback {
+            let cb = MultiPassCallback {
                 shader: pipeline_arc.clone(),
                 bass_energy: self.bass_energy.clone(),
                 mid_energy: self.mid_energy.clone(),
@@ -716,7 +693,7 @@ impl TopApp {
     fn apply_shader(&mut self) {
         let (vertex_len, fragment_len) = self
             .buffer_shaders
-            .get(&BufferType::MainImage)
+            .get(&BufferKind::MainImage)
             .map(|(v, f)| (v.len(), f.len()))
             .unwrap_or((0, 0));
         
@@ -792,14 +769,14 @@ impl TopApp {
         }
     }
 
-    fn switch_buffer(&mut self, new_buffer: BufferType) {
+    fn switch_buffer(&mut self, new_buffer: BufferKind) {
         if new_buffer == self.current_buffer {
             return;
         }
 
         self.current_buffer = new_buffer;
         
-        log::info!("Switched to buffer: {}", new_buffer.as_str());
+        log::info!("Switched to buffer: {:?}", new_buffer);
         self.toast_mgr
             .show_info(&format!("Switched to {}", new_buffer.as_str()));
     }
@@ -865,7 +842,7 @@ impl TopApp {
         // Export shared vertex shader (only once)
         content.push_str("// ========== SHARED VERTEX SHADER ==========\n");
         if let Some((vertex, _)) =
-            self.buffer_shaders.get(&BufferType::MainImage)
+            self.buffer_shaders.get(&BufferKind::MainImage)
         {
             content.push_str(vertex);
             if !vertex.ends_with('\n') {
@@ -875,14 +852,14 @@ impl TopApp {
         content.push_str("// ========== END SHARED VERTEX SHADER ==========\n\n");
         
         // Export fragment shaders for each buffer
-        for buffer_type in BufferType::all() {
+        for buffer_type in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
             if let Some((_, fragment)) = self.buffer_shaders.get(&buffer_type) {
                 let buffer_name = match buffer_type {
-                    BufferType::MainImage => "MAIN_IMAGE",
-                    BufferType::BufferA => "BUFFER_A",
-                    BufferType::BufferB => "BUFFER_B",
-                    BufferType::BufferC => "BUFFER_C",
-                    BufferType::BufferD => "BUFFER_D",
+                    BufferKind::MainImage => "MAIN_IMAGE",
+                    BufferKind::BufferA => "BUFFER_A",
+                    BufferKind::BufferB => "BUFFER_B",
+                    BufferKind::BufferC => "BUFFER_C",
+                    BufferKind::BufferD => "BUFFER_D",
                 };
                 
                 // Fragment shader section only
