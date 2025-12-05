@@ -240,48 +240,128 @@ impl eframe::App for TopApp {
             self.load_audio_file(path);
         }
 
-        // Preset menu overlay
+        // Preset menu overlay (renamed to Shader Properties)
+        let mut load_audio_request: Option<String> = None;
         if self.show_preset_menu {
-            egui::Window::new("Shader Presets")
+            egui::Window::new("Shader Properties")
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .resizable(false)
                 .collapsible(false)
+                .default_size([380.0, 500.0])
                 .show(ctx, |ui| {
-                    ui.set_min_width(300.0);
-                    ui.heading("🎨 Load Shader Preset");
-                    ui.add_space(10.0);
+                    ui.set_min_width(360.0);
                     
-                    ui.label("Click to load a preset shader:");
-                    ui.add_space(5.0);
-                    
+                    // Presets Section
                     ui.group(|ui| {
+                        ui.heading("🎨 Shader Presets");
+                        ui.add_space(5.0);
+                        
                         if ui.button("📊 Default (Audio Visualizer)").clicked() {
                             self.load_preset_shader("default");
-                            self.show_preset_menu = false;
                         }
                         if ui.button("🌀 Psychedelic Spiral").clicked() {
                             self.load_preset_shader("psychedelic");
-                            self.show_preset_menu = false;
                         }
                         if ui.button("🕳️ Infinite Tunnel").clicked() {
                             self.load_preset_shader("tunnel");
-                            self.show_preset_menu = false;
                         }
                         if ui.button("📦 Raymarched Boxes").clicked() {
                             self.load_preset_shader("raymarch");
-                            self.show_preset_menu = false;
                         }
                         if ui.button("🌌 Julia Set Fractal").clicked() {
                             self.load_preset_shader("fractal");
-                            self.show_preset_menu = false;
                         }
                     });
                     
                     ui.add_space(10.0);
-                    if ui.button("Cancel").clicked() {
-                        self.show_preset_menu = false;
-                    }
+                    
+                    // Audio Section
+                    ui.group(|ui| {
+                        ui.heading("🎵 Audio");
+                        ui.add_space(5.0);
+                        
+                        // Audio file selection
+                        ui.label(egui::RichText::new("Audio File:").strong());
+                        ui.horizontal(|ui| {
+                            let file_text = if let Some(path) = &self.audio_file_path {
+                                std::path::Path::new(path)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("Unknown")
+                                    .to_string()
+                            } else {
+                                "No audio loaded".to_string()
+                            };
+                            
+                            ui.label(
+                                egui::RichText::new(file_text)
+                                    .monospace()
+                                    .color(if self.audio_file_path.is_some() {
+                                        egui::Color32::from_rgb(100, 200, 100)
+                                    } else {
+                                        egui::Color32::from_rgb(150, 150, 150)
+                                    })
+                            );
+                        });
+
+                        ui.add_space(5.0);
+
+                        if ui.button("📁 Load Audio File...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Audio", &["mp3", "wav", "ogg", "flac"])
+                                .pick_file()
+                            {
+                                load_audio_request = Some(path.to_string_lossy().to_string());
+                            }
+                        }
+
+                        ui.add_space(5.0);
+                        ui.separator();
+                        ui.add_space(5.0);
+
+                        ui.checkbox(&mut self.debug_audio, "Debug Mode (Manual Control)");
+
+                        ui.add_space(5.0);
+
+                        if self.debug_audio {
+                            ui.label(egui::RichText::new("Manual Controls:").strong());
+                            ui.add(egui::Slider::new(&mut self.debug_bass, 0.0..=1.0).text("Bass (Low)"));
+                            ui.add(egui::Slider::new(&mut self.debug_mid, 0.0..=1.0).text("Mid"));
+                            ui.add(egui::Slider::new(&mut self.debug_high, 0.0..=1.0).text("High"));
+                        } else {
+                            ui.label(egui::RichText::new("Live Audio Levels:").strong());
+                            let bass = *self.bass_energy.lock().unwrap();
+                            let mid = *self.mid_energy.lock().unwrap();
+                            let high = *self.high_energy.lock().unwrap();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Bass:");
+                                ui.add(egui::ProgressBar::new(bass).text(format!("{:.2}", bass)));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Mid:  ");
+                                ui.add(egui::ProgressBar::new(mid).text(format!("{:.2}", mid)));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("High:");
+                                ui.add(egui::ProgressBar::new(high).text(format!("{:.2}", high)));
+                            });
+                        }
+                    });
+                    
+                    ui.add_space(10.0);
+                    
+                    ui.vertical_centered(|ui| {
+                        if ui.button(egui::RichText::new("Close").size(15.0)).clicked() {
+                            self.show_preset_menu = false;
+                        }
+                    });
                 });
+        }
+        
+        // Handle audio file loading request
+        if let Some(path) = load_audio_request {
+            self.load_audio_file(path);
         }
 
         // Toast notifications - only show window if there are active toasts
@@ -457,7 +537,7 @@ impl TopApp {
                                 .frame(true)
                         );
 
-                        if preset_response.on_hover_text("Load Shader Presets").clicked() {
+                        if preset_response.on_hover_text("Shader Properties (Presets & Audio)").clicked() {
                             self.show_preset_menu = !self.show_preset_menu;
                         }
                         
