@@ -1,8 +1,8 @@
 [package]
-name = "egui_two_windows"
+name = "webshard_editor"
 version = "0.1.0"
 edition = "2021"
-default-run = "egui_two_windows"
+default-run = "webshard_editor"
 
 [dependencies]
 # eframe/egui latest compatible with code editor

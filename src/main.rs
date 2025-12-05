@@ -41,7 +41,7 @@ fn main() {
     native_options.viewport = vp;
 
     let result = eframe::run_native(
-        "ShaderToy - Single Window",
+        "WebShard Editor",
         native_options,
         Box::new(|cc| {
             // Register fonts and configure styles
