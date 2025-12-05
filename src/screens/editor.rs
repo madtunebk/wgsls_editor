@@ -505,6 +505,14 @@ impl TopApp {
                 egui::vec2(ui.available_width(), available_height - reserved),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
+                    // Set background to match code editor theme
+                    let bg_color = egui::Color32::from_rgb(13, 17, 23); // GitHub Dark background
+                    ui.painter().rect_filled(
+                        ui.max_rect(),
+                        0.0,
+                        bg_color,
+                    );
+                    
                     let editor_rect = ui.max_rect();
 
                     // Code editor with unique ID per tab/buffer combination
