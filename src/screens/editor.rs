@@ -299,15 +299,15 @@ impl eframe::App for TopApp {
         if self.show_error_window {
             egui::Window::new("Shader Error")
                 .collapsible(false)
-                .resizable(false)
-                .default_width(600.0)
-                .default_height(450.0)
+                .resizable(true)
+                .default_size([600.0, 450.0])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.set_min_width(550.0);
+                    ui.set_min_size(egui::vec2(550.0, 400.0));
+                    ui.set_max_size(egui::vec2(800.0, 600.0));
 
                     egui::ScrollArea::vertical()
-                        .max_height(380.0)
+                        .auto_shrink([false, false])
                         .show(ui, |ui| {
                             ui.add_space(8.0);
 
