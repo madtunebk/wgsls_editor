@@ -356,13 +356,13 @@ impl TopApp {
 
                 let tab_h = 36.0;
                 
-                // Tabs: Fragment + Buffer tabs + Vertex
+                // Tabs: Fragment + Buffer tabs (A-D) + Vertex
                 ui.horizontal(|ui| {
-                    let total_tabs = 7.0; // Fragment + 5 buffers + Vertex
+                    let total_tabs = 6.0; // Fragment + 4 buffers (A-D) + Vertex
                     let tab_width = (ui.available_width() - (total_tabs - 1.0) * 4.0) / total_tabs;
                     
-                    // Fragment tab
-                    let fragment_selected = self.active_tab == 0;
+                    // Fragment tab (represents Main Image)
+                    let fragment_selected = self.active_tab == 0 && self.current_buffer == BufferType::MainImage;
                     let fragment_button = egui::Button::new(
                         egui::RichText::new("📝 Fragment").size(12.0)
                     )
@@ -371,13 +371,18 @@ impl TopApp {
                     
                     if ui.add(fragment_button).clicked() {
                         self.active_tab = 0;
+                        self.switch_buffer(BufferType::MainImage);
                     }
                     
                     ui.add_space(4.0);
                     
-                    // Buffer tabs (Main Image, A, B, C, D)
+                    // Buffer tabs (A, B, C, D only - skip MainImage)
                     for buffer in BufferType::all() {
-                        let is_current = buffer == self.current_buffer;
+                        if buffer == BufferType::MainImage {
+                            continue; // Skip Main Image, it's represented by Fragment tab
+                        }
+                        
+                        let is_current = buffer == self.current_buffer && self.active_tab == 0;
                         let button = egui::Button::new(
                             egui::RichText::new(buffer.as_str()).size(12.0)
                         )
@@ -385,6 +390,7 @@ impl TopApp {
                         .min_size(egui::vec2(tab_width, tab_h));
                         
                         if ui.add(button).clicked() {
+                            self.active_tab = 0;
                             self.switch_buffer(buffer);
                         }
                         
