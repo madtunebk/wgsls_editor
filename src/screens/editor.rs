@@ -356,38 +356,18 @@ impl TopApp {
 
                 let tab_h = 36.0;
                 
-                // Three tabs: Buffer dropdown + Fragment + Vertex
+                // Tabs: Fragment + Buffer tabs + Vertex
                 ui.horizontal(|ui| {
-                    let third_width = ui.available_width() / 3.0 - 5.0;
+                    let total_tabs = 7.0; // Fragment + 5 buffers + Vertex
+                    let tab_width = (ui.available_width() - (total_tabs - 1.0) * 4.0) / total_tabs;
                     
-                    // Buffer dropdown (1/3 width)
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(third_width, tab_h),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            egui::ComboBox::from_id_salt("buffer_selector")
-                                .selected_text(format!("🎬 {}", self.current_buffer.as_str()))
-                                .width(third_width - 10.0)
-                                .show_ui(ui, |ui| {
-                                    for buffer in BufferType::all() {
-                                        let is_selected = buffer == self.current_buffer;
-                                        if ui.selectable_label(is_selected, buffer.as_str()).clicked() {
-                                            self.switch_buffer(buffer);
-                                        }
-                                    }
-                                });
-                        },
-                    );
-                    
-                    ui.add_space(4.0);
-                    
-                    // Fragment tab button (1/3 width)
+                    // Fragment tab
                     let fragment_selected = self.active_tab == 0;
                     let fragment_button = egui::Button::new(
-                        egui::RichText::new("📝 Fragment").size(13.0)
+                        egui::RichText::new("📝 Fragment").size(12.0)
                     )
                     .selected(fragment_selected)
-                    .min_size(egui::vec2(third_width, tab_h));
+                    .min_size(egui::vec2(tab_width, tab_h));
                     
                     if ui.add(fragment_button).clicked() {
                         self.active_tab = 0;
@@ -395,13 +375,29 @@ impl TopApp {
                     
                     ui.add_space(4.0);
                     
-                    // Vertex tab button (1/3 width)
+                    // Buffer tabs (Main Image, A, B, C, D)
+                    for buffer in BufferType::all() {
+                        let is_current = buffer == self.current_buffer;
+                        let button = egui::Button::new(
+                            egui::RichText::new(buffer.as_str()).size(12.0)
+                        )
+                        .selected(is_current)
+                        .min_size(egui::vec2(tab_width, tab_h));
+                        
+                        if ui.add(button).clicked() {
+                            self.switch_buffer(buffer);
+                        }
+                        
+                        ui.add_space(4.0);
+                    }
+                    
+                    // Vertex tab
                     let vertex_selected = self.active_tab == 1;
                     let vertex_button = egui::Button::new(
-                        egui::RichText::new("⚡ Vertex").size(13.0)
+                        egui::RichText::new("⚡ Vertex").size(12.0)
                     )
                     .selected(vertex_selected)
-                    .min_size(egui::vec2(third_width, tab_h));
+                    .min_size(egui::vec2(tab_width, tab_h));
                     
                     if ui.add(vertex_button).clicked() {
                         self.active_tab = 1;
