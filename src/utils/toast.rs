@@ -2,11 +2,10 @@ use eframe::egui::{self, Color32, Rect, Vec2};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum ToastType {
-    #[allow(dead_code)]
     Success,
     Error,
-    #[allow(dead_code)]
     Info,
 }
 
@@ -36,6 +35,7 @@ impl Toast {
     pub fn success(message: impl Into<String>) -> Self {
         Self::new(message, ToastType::Success)
     }
+    #[allow(dead_code)]
     pub fn error(message: impl Into<String>) -> Self {
         let mut t = Self::new(message, ToastType::Error);
         t.sticky = true;
@@ -71,12 +71,14 @@ pub struct ToastManager {
 }
 
 impl ToastManager {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
     pub fn show(&mut self, toast: Toast) {
         self.toasts.push(toast);
     }
+    #[allow(dead_code)]
     pub fn show_error(&mut self, message: impl Into<String>) {
         self.show(Toast::error(message));
     }
@@ -90,6 +92,7 @@ impl ToastManager {
     pub fn has_toasts(&self) -> bool {
         self.toasts.iter().any(|t| !t.is_expired() && !t.dismissed)
     }
+    #[allow(dead_code)]
     pub fn dismiss_errors(&mut self) {
         for t in &mut self.toasts {
             if let ToastType::Error = t.toast_type {

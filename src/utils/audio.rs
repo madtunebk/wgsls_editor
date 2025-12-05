@@ -43,16 +43,25 @@ impl AudioState {
 pub fn start_input_fft(audio: Arc<AudioState>) -> Option<cpal::Stream> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
+    info!(">>> start_input_fft() called!");
+    
     let host = cpal::default_host();
     let device = match host.default_input_device() {
-        Some(d) => d,
+        Some(d) => {
+            info!("Audio input device found: {:?}", d.name());
+            d
+        }
         None => {
             warn!("No default input device");
             return None;
         }
     };
     let config = match device.default_input_config() {
-        Ok(c) => c,
+        Ok(c) => {
+            info!("Audio config - sample_rate: {}, channels: {}, format: {:?}", 
+                  c.sample_rate().0, c.channels(), c.sample_format());
+            c
+        }
         Err(e) => {
             warn!("No default input config: {e}");
             return None;
@@ -84,6 +93,9 @@ pub fn start_input_fft(audio: Arc<AudioState>) -> Option<cpal::Stream> {
         let mut sh = 0.0f32; // high
         let attack = 0.5f32; // faster rise
         let decay = 0.2f32; // slower fall
+        
+        let mut frame_count = 0usize;
+        info!("Audio FFT thread started");
 
         loop {
             // Fill tmp with mono samples
@@ -169,11 +181,18 @@ pub fn start_input_fft(audio: Arc<AudioState>) -> Option<cpal::Stream> {
             };
 
             audio.set_bands(sb, sm, sh);
+            
+            // Debug print every 30 frames (~1 second at typical rates)
+            frame_count += 1;
+            if frame_count % 30 == 0 {
+                debug!("Audio bands - bass: {:.3}, mid: {:.3}, high: {:.3}", sb, sm, sh);
+            }
         }
     });
 
     // Build and start the CPAL input stream
     let cfg: cpal::StreamConfig = config.clone().into();
+    info!("Building audio input stream...");
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => build_input_stream_f32(&device, &cfg, tx),
         cpal::SampleFormat::I16 => build_input_stream_i16(&device, &cfg, tx),
@@ -189,6 +208,7 @@ pub fn start_input_fft(audio: Arc<AudioState>) -> Option<cpal::Stream> {
         warn!("Failed to start input stream: {e}");
         return None;
     }
+    info!("Audio input stream started successfully");
     Some(stream)
 }
 
@@ -199,9 +219,14 @@ fn build_input_stream_f32(
 ) -> Result<cpal::Stream, cpal::BuildStreamError> {
     use cpal::traits::DeviceTrait;
     let channels = config.channels as usize;
+    let mut sample_count = 0usize;
     device.build_input_stream(
         config,
         move |data: &[f32], _| {
+            sample_count += data.len();
+            if sample_count % 48000 == 0 {
+                debug!("Received {} audio samples", sample_count);
+            }
             for frame in data.chunks_exact(channels) {
                 for &s in frame {
                     let _ = tx.send(s);

@@ -36,6 +36,7 @@ impl From<&str> for ShaderError {
 }
 
 /// Convert a panic payload to a readable string
+#[allow(dead_code)]
 pub fn panic_to_string(e: Box<dyn Any + Send>) -> String {
     let any = &*e;
     if let Some(s) = any.downcast_ref::<&str>() {
@@ -48,6 +49,7 @@ pub fn panic_to_string(e: Box<dyn Any + Send>) -> String {
 }
 
 /// Parse WGSL error message to extract useful information
+#[allow(dead_code)]
 pub fn parse_wgsl_error(error_msg: &str) -> ShaderError {
     // Check for common WGSL error patterns
     if error_msg.contains("expected") || error_msg.contains("unexpected") {

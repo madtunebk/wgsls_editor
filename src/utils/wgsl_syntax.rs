@@ -1,6 +1,9 @@
+#[cfg(feature = "code_editor")]
 use egui_code_editor::Syntax;
+#[cfg(feature = "code_editor")]
 use std::collections::BTreeSet;
 
+#[cfg(feature = "code_editor")]
 pub fn wgsl() -> Syntax {
     let keywords: BTreeSet<&str> = BTreeSet::from_iter(vec![
         // Control flow

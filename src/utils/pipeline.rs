@@ -31,11 +31,7 @@ impl ShaderPipeline {
         format: egui_wgpu::wgpu::TextureFormat,
         wgsl_src: &str,
     ) -> Result<Self, ShaderError> {
-        eprintln!(">>> ShaderPipeline::new CALLED with {} bytes", wgsl_src.len());
-        log::info!(
-            "[ShaderPipeline] Creating shader module from WGSL source ({} bytes)",
-            wgsl_src.len()
-        );
+        log::debug!("Creating shader pipeline ({} bytes)", wgsl_src.len());
 
         // Validate shader source is not empty
         if wgsl_src.trim().is_empty() {
@@ -61,17 +57,15 @@ impl ShaderPipeline {
         }
 
         // Validate WGSL syntax using naga BEFORE passing to wgpu
-        eprintln!(">>> About to validate with naga...");
-        log::debug!("[ShaderPipeline] Validating WGSL with naga...");
+        log::debug!("Validating WGSL with naga parser");
         let module = match naga::front::wgsl::parse_str(wgsl_src) {
             Ok(module) => {
-                eprintln!(">>> Naga parse SUCCESS");
+                log::debug!("Naga parse successful");
                 module
             }
             Err(parse_error) => {
-                eprintln!(">>> Naga parse FAILED");
                 let error_msg = format!("WGSL Parse Error:\n{}", parse_error.emit_to_string(wgsl_src));
-                log::error!("[ShaderPipeline] {}", error_msg);
+                log::error!("Shader parse failed: {}", error_msg);
                 return Err(ShaderError::ValidationError(error_msg));
             }
         };
@@ -81,25 +75,22 @@ impl ShaderPipeline {
             naga::valid::ValidationFlags::all(),
             naga::valid::Capabilities::all(),
         );
-        
+
         if let Err(validation_error) = validator.validate(&module) {
             let error_msg = format!("WGSL Validation Error:\n{}", validation_error.emit_to_string(wgsl_src));
-            log::error!("[ShaderPipeline] {}", error_msg);
+            log::error!("Shader validation failed: {}", error_msg);
             return Err(ShaderError::ValidationError(error_msg));
         }
 
-        log::info!("[ShaderPipeline] Naga validation passed!");
+        log::debug!("Naga validation passed, creating WGPU shader module");
 
         let shader = device.create_shader_module(egui_wgpu::wgpu::ShaderModuleDescriptor {
             label: Some("dynamic_shader"),
             source: egui_wgpu::wgpu::ShaderSource::Wgsl(wgsl_src.into()),
         });
 
-        log::debug!("[ShaderPipeline] Shader module created successfully");        let uniform_size = std::mem::size_of::<ShaderUniforms>() as u64;
-        log::debug!(
-            "[ShaderPipeline] Creating uniform buffer (size: {} bytes)",
-            uniform_size
-        );
+        let uniform_size = std::mem::size_of::<ShaderUniforms>() as u64;
+        log::trace!("Creating uniform buffer ({} bytes)", uniform_size);
         let uniform_buffer = device.create_buffer(&egui_wgpu::wgpu::BufferDescriptor {
             label: Some("shader_uniforms"),
             size: uniform_size,
@@ -164,10 +155,7 @@ impl ShaderPipeline {
             cache: None,
         });
 
-        log::info!(
-            "[ShaderPipeline] Pipeline created successfully with format: {:?}",
-            format
-        );
+        log::info!("Shader pipeline created successfully (format: {:?})", format);
 
         Ok(Self {
             pipeline,
@@ -181,7 +169,9 @@ impl ShaderPipeline {
 // Callback for rendering shader
 pub struct ShaderCallback {
     pub shader: Arc<ShaderPipeline>,
-    pub audio_state: Arc<crate::funcs::audio::AudioState>,
+    pub bass_energy: Arc<std::sync::Mutex<f32>>,
+    pub mid_energy: Arc<std::sync::Mutex<f32>>,
+    pub high_energy: Arc<std::sync::Mutex<f32>>,
 }
 
 impl egui_wgpu::CallbackTrait for ShaderCallback {
@@ -200,7 +190,10 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
             screen_descriptor.size_in_pixels[1] as f32,
         ];
 
-        let (bass, mid, high) = self.audio_state.get_bands();
+        let bass = *self.bass_energy.lock().unwrap();
+        let mid = *self.mid_energy.lock().unwrap();
+        let high = *self.high_energy.lock().unwrap();
+
         let uniforms = ShaderUniforms {
             time: elapsed,
             audio_bass: bass,
@@ -231,7 +224,7 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
         // Log first render only
         static FIRST_RENDER: std::sync::Once = std::sync::Once::new();
         FIRST_RENDER.call_once(|| {
-            log::info!("[ShaderCallback] First render executed - drawing 6 vertices");
+            log::debug!("First shader render executed");
         });
     }
 }

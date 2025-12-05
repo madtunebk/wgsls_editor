@@ -18,9 +18,10 @@ regex = "1.10"
 cpal = "0.15"
 rustfft = "6.2"
 naga = { version = "27", features = ["wgsl-in"] }
+rodio = "0.17"
 
 [features]
-default = []
+default = ["code_editor"]
 code_editor = ["egui_code_editor"]
 
 [dependencies.egui_code_editor]

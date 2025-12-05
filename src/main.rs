@@ -11,6 +11,13 @@ const DESIGN_H: f32 = 1080.0;
 const UI_SCALE: f32 = 1.25;
 
 fn main() {
+    // Initialize logging
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
+    log::info!("Application starting...");
+
     let mut native_options = NativeOptions::default();
     native_options.renderer = eframe::Renderer::Wgpu;
 
@@ -37,18 +44,16 @@ fn main() {
         "ShaderToy - Single Window",
         native_options,
         Box::new(|cc| {
+            // Register fonts and configure styles
             utils::register_error_fonts(&cc.egui_ctx);
             utils::apply_editor_theme(&cc.egui_ctx);
-            let mut style = (*cc.egui_ctx.style()).clone();
-            style
-                .text_styles
-                .insert(egui::TextStyle::Monospace, egui::FontId::monospace(18.0));
-            cc.egui_ctx.set_style(style);
             Ok(Box::new(screens::editor::TopApp::new(cc)))
         }),
     );
 
     if let Err(e) = result {
-        eprintln!("Application error: {}", e);
+        log::error!("Application error: {}", e);
+    } else {
+        log::info!("Application terminated normally");
     }
 }

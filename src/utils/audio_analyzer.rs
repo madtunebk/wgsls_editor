@@ -48,7 +48,7 @@ impl AudioAnalyzer {
         for &sample in samples {
             self.buffer.push(sample as f32 / 32768.0);
         }
-        
+
         // Process FFT whenever we have enough samples
         while self.buffer.len() >= FFT_SIZE {
             self.run_fft();
