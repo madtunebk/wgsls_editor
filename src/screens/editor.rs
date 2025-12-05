@@ -13,11 +13,46 @@ use crate::utils::wgsl_syntax;
 const DEFAULT_VERTEX: &str = include_str!("../assets/shards/default.vert");
 const DEFAULT_FRAGMENT: &str = include_str!("../assets/shards/default.frag");
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BufferType {
+    MainImage,
+    BufferA,
+    BufferB,
+    BufferC,
+    BufferD,
+}
+
+impl BufferType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            BufferType::MainImage => "Main Image",
+            BufferType::BufferA => "Buffer A",
+            BufferType::BufferB => "Buffer B",
+            BufferType::BufferC => "Buffer C",
+            BufferType::BufferD => "Buffer D",
+        }
+    }
+
+    fn all() -> Vec<BufferType> {
+        vec![
+            BufferType::MainImage,
+            BufferType::BufferA,
+            BufferType::BufferB,
+            BufferType::BufferC,
+            BufferType::BufferD,
+        ]
+    }
+}
+
 pub struct TopApp {
-    // Shader code
+    // Shader code - per buffer
     vertex: String,
     fragment: String,
     active_tab: u8, // 0=Fragment, 1=Vertex
+    
+    // Buffer system
+    current_buffer: BufferType,
+    buffer_shaders: std::collections::HashMap<BufferType, (String, String)>, // (vertex, fragment)
 
     // Shader pipeline
     shader_shared: Arc<Mutex<Option<Arc<ShaderPipeline>>>>,
@@ -31,6 +66,7 @@ pub struct TopApp {
     show_audio_overlay: bool,
     show_error_window: bool,
     error_message: String,
+    show_preset_menu: bool,
 
     // Audio - FFT energy values
     bass_energy: Arc<Mutex<f32>>,
@@ -50,10 +86,21 @@ impl TopApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         log::info!("Initializing TopApp...");
         
+        // Initialize buffer shaders
+        let mut buffer_shaders = std::collections::HashMap::new();
+        buffer_shaders.insert(BufferType::MainImage, (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string()));
+        buffer_shaders.insert(BufferType::BufferA, (DEFAULT_VERTEX.to_string(), "// Buffer A\n".to_string()));
+        buffer_shaders.insert(BufferType::BufferB, (DEFAULT_VERTEX.to_string(), "// Buffer B\n".to_string()));
+        buffer_shaders.insert(BufferType::BufferC, (DEFAULT_VERTEX.to_string(), "// Buffer C\n".to_string()));
+        buffer_shaders.insert(BufferType::BufferD, (DEFAULT_VERTEX.to_string(), "// Buffer D\n".to_string()));
+        
         let mut app = Self {
             vertex: DEFAULT_VERTEX.to_string(),
             fragment: DEFAULT_FRAGMENT.to_string(),
             active_tab: 0,
+            
+            current_buffer: BufferType::MainImage,
+            buffer_shaders,
 
             shader_shared: Arc::new(Mutex::new(None)),
             shader_needs_update: Arc::new(AtomicBool::new(false)),
@@ -65,6 +112,7 @@ impl TopApp {
             show_audio_overlay: false,
             show_error_window: false,
             error_message: String::new(),
+            show_preset_menu: false,
 
             bass_energy: Arc::new(Mutex::new(0.0)),
             mid_energy: Arc::new(Mutex::new(0.0)),
@@ -191,6 +239,50 @@ impl eframe::App for TopApp {
             self.load_audio_file(path);
         }
 
+        // Preset menu overlay
+        if self.show_preset_menu {
+            egui::Window::new("Shader Presets")
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .resizable(false)
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    ui.set_min_width(300.0);
+                    ui.heading("🎨 Load Shader Preset");
+                    ui.add_space(10.0);
+                    
+                    ui.label("Click to load a preset shader:");
+                    ui.add_space(5.0);
+                    
+                    ui.group(|ui| {
+                        if ui.button("📊 Default (Audio Visualizer)").clicked() {
+                            self.load_preset_shader("default");
+                            self.show_preset_menu = false;
+                        }
+                        if ui.button("🌀 Psychedelic Spiral").clicked() {
+                            self.load_preset_shader("psychedelic");
+                            self.show_preset_menu = false;
+                        }
+                        if ui.button("🕳️ Infinite Tunnel").clicked() {
+                            self.load_preset_shader("tunnel");
+                            self.show_preset_menu = false;
+                        }
+                        if ui.button("📦 Raymarched Boxes").clicked() {
+                            self.load_preset_shader("raymarch");
+                            self.show_preset_menu = false;
+                        }
+                        if ui.button("🌌 Julia Set Fractal").clicked() {
+                            self.load_preset_shader("fractal");
+                            self.show_preset_menu = false;
+                        }
+                    });
+                    
+                    ui.add_space(10.0);
+                    if ui.button("Cancel").clicked() {
+                        self.show_preset_menu = false;
+                    }
+                });
+        }
+
         // Toast notifications - only show window if there are active toasts
         if self.toast_mgr.has_toasts() {
             egui::Window::new("")
@@ -252,7 +344,7 @@ impl TopApp {
         ui.spacing_mut().window_margin = egui::Margin::ZERO;
 
         ui.vertical(|ui| {
-            // A: Top bar - Fragment/Vertex tabs only
+            // A: Top bar - Buffer dropdown + Fragment/Vertex tabs + Preset button
             ui.horizontal(|ui| {
                 ui.style_mut().visuals.widgets.inactive.weak_bg_fill =
                     egui::Color32::from_rgb(30, 30, 35);
@@ -262,11 +354,27 @@ impl TopApp {
                     egui::Color32::from_rgb(35, 35, 40);
 
                 let tab_h = 36.0;
-                let available_width = ui.available_width();
-                let tab_w = available_width / 2.0;
+                
+                // Buffer dropdown (left side, ~160px)
+                let dropdown_width = 160.0;
+                egui::ComboBox::from_id_salt("buffer_selector")
+                    .selected_text(format!("🎬 {}", self.current_buffer.as_str()))
+                    .width(dropdown_width - 20.0)
+                    .show_ui(ui, |ui| {
+                        for buffer in BufferType::all() {
+                            let is_selected = buffer == self.current_buffer;
+                            if ui.selectable_label(is_selected, buffer.as_str()).clicked() {
+                                self.switch_buffer(buffer);
+                            }
+                        }
+                    });
+                
+                // Fragment/Vertex tabs (middle, split remaining space)
+                let remaining_width = ui.available_width() - 100.0; // Reserve space for preset button
+                let tab_w = remaining_width / 2.0;
 
                 // Fragment tab
-                let frag_text = egui::RichText::new("Fragment").size(15.0).strong();
+                let frag_text = egui::RichText::new("Fragment").size(14.0);
                 if ui
                     .add_sized([tab_w, tab_h], egui::Button::new(frag_text).selected(self.active_tab == 0))
                     .clicked()
@@ -275,12 +383,20 @@ impl TopApp {
                 }
 
                 // Vertex tab
-                let vert_text = egui::RichText::new("Vertex").size(15.0).strong();
+                let vert_text = egui::RichText::new("Vertex").size(14.0);
                 if ui
                     .add_sized([tab_w, tab_h], egui::Button::new(vert_text).selected(self.active_tab == 1))
                     .clicked()
                 {
                     self.active_tab = 1;
+                }
+                
+                // Preset button (right side)
+                if ui.button(egui::RichText::new("📁 Presets").size(13.0))
+                    .on_hover_text("Load shader presets")
+                    .clicked()
+                {
+                    self.show_preset_menu = !self.show_preset_menu;
                 }
             });
 
@@ -513,5 +629,50 @@ impl TopApp {
                 log::warn!("Failed to initialize audio playback from: {}", path);
             }
         }
+    }
+
+    fn switch_buffer(&mut self, new_buffer: BufferType) {
+        if new_buffer == self.current_buffer {
+            return;
+        }
+
+        // Save current buffer's shaders
+        self.buffer_shaders.insert(
+            self.current_buffer,
+            (self.vertex.clone(), self.fragment.clone())
+        );
+
+        // Load new buffer's shaders
+        let (vertex, fragment) = self.buffer_shaders
+            .get(&new_buffer)
+            .cloned()
+            .unwrap_or_else(|| (DEFAULT_VERTEX.to_string(), "// Empty buffer\n".to_string()));
+
+        self.vertex = vertex;
+        self.fragment = fragment;
+        self.current_buffer = new_buffer;
+
+        log::info!("Switched to buffer: {}", new_buffer.as_str());
+        self.toast_mgr.show_info(&format!("Switched to {}", new_buffer.as_str()));
+    }
+
+    fn load_preset_shader(&mut self, name: &str) {
+        let preset_content = match name {
+            "default" => DEFAULT_FRAGMENT,
+            "psychedelic" => include_str!("../assets/shards/psychedelic.frag"),
+            "tunnel" => include_str!("../assets/shards/tunnel.frag"),
+            "raymarch" => include_str!("../assets/shards/raymarch.frag"),
+            "fractal" => include_str!("../assets/shards/fractal.frag"),
+            _ => {
+                self.toast_mgr.show_error(&format!("Unknown preset: {}", name));
+                return;
+            }
+        };
+
+        self.fragment = preset_content.to_string();
+        self.vertex = DEFAULT_VERTEX.to_string();
+        self.apply_shader();
+        self.toast_mgr.show_success(&format!("Loaded preset: {}", name));
+        log::info!("Loaded preset shader: {}", name);
     }
 }
