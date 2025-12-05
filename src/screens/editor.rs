@@ -344,7 +344,7 @@ impl TopApp {
         ui.spacing_mut().window_margin = egui::Margin::ZERO;
 
         ui.vertical(|ui| {
-            // A: Top bar - Buffer dropdown + Vertex tab only
+            // A: Top bar - Buffer dropdown only
             ui.horizontal(|ui| {
                 ui.style_mut().visuals.widgets.inactive.weak_bg_fill =
                     egui::Color32::from_rgb(30, 30, 35);
@@ -355,11 +355,10 @@ impl TopApp {
 
                 let tab_h = 36.0;
                 
-                // Buffer dropdown (left side, takes remaining space)
-                let dropdown_width = ui.available_width() - 120.0; // Reserve for Vertex tab
+                // Buffer dropdown (full width)
                 egui::ComboBox::from_id_salt("buffer_selector")
                     .selected_text(format!("🎬 {}", self.current_buffer.as_str()))
-                    .width(dropdown_width - 20.0)
+                    .height(tab_h)
                     .show_ui(ui, |ui| {
                         for buffer in BufferType::all() {
                             let is_selected = buffer == self.current_buffer;
@@ -368,15 +367,6 @@ impl TopApp {
                             }
                         }
                     });
-
-                // Vertex tab (right side, only show when active_tab == 1)
-                let vert_text = egui::RichText::new("Vertex").size(14.0);
-                if ui
-                    .add_sized([120.0, tab_h], egui::Button::new(vert_text).selected(self.active_tab == 1))
-                    .clicked()
-                {
-                    self.active_tab = 1;
-                }
             });
 
             ui.separator();
@@ -506,37 +496,59 @@ impl TopApp {
     }
 
     fn render_code_editor(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
-        let text = if self.active_tab == 0 {
-            &mut self.fragment
-        } else {
-            &mut self.vertex
-        };
-
         #[cfg(feature = "code_editor")]
         {
+            // Fragment shader editor (always visible)
+            ui.label(egui::RichText::new("Fragment Shader").strong().size(13.0));
+            ui.add_space(4.0);
+            
             egui_code_editor::CodeEditor::default()
-                .id_source(if self.active_tab == 0 { "frag" } else { "vert" })
+                .id_source("frag")
                 .with_fontsize(self.editor_font_size)
                 .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
                 .with_syntax(wgsl_syntax::wgsl())
                 .with_numlines(true)
-                .show(ui, text);
+                .show(ui, &mut self.fragment);
+            
+            ui.add_space(10.0);
+            
+            // Vertex shader (collapsible)
+            ui.collapsing(egui::RichText::new("⚡ Vertex Shader (Advanced)").strong().size(13.0), |ui| {
+                ui.add_space(4.0);
+                egui_code_editor::CodeEditor::default()
+                    .id_source("vert")
+                    .with_fontsize(self.editor_font_size)
+                    .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
+                    .with_syntax(wgsl_syntax::wgsl())
+                    .with_numlines(true)
+                    .show(ui, &mut self.vertex);
+            });
         }
 
         #[cfg(not(feature = "code_editor"))]
         {
-            // Update monospace font size from settings slider
-            ui.style_mut().text_styles.insert(
-                egui::TextStyle::Monospace,
-                egui::FontId::monospace(self.editor_font_size),
-            );
-
+            // Fallback: Fragment shader
+            ui.label("Fragment Shader:");
             ui.add(
-                egui::TextEdit::multiline(text)
+                egui::TextEdit::multiline(&mut self.fragment)
                     .font(egui::TextStyle::Monospace)
                     .code_editor()
-                    .desired_width(f32::INFINITY),
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(20),
             );
+            
+            ui.add_space(10.0);
+            
+            // Vertex shader (collapsible)
+            ui.collapsing("Vertex Shader (Advanced)", |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.vertex)
+                        .font(egui::TextStyle::Monospace)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(15),
+                );
+            });
         }
     }
 
