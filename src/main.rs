@@ -5,11 +5,6 @@ mod screens;
 mod ui_components;
 mod utils;
 
-// Window sizing constants
-const DESIGN_W: f32 = 1920.0;
-const DESIGN_H: f32 = 1080.0;
-const UI_SCALE: f32 = 1.25;
-
 fn main() {
     // Initialize logging
     env_logger::Builder::from_default_env()
@@ -21,18 +16,19 @@ fn main() {
     let mut native_options = NativeOptions::default();
     native_options.renderer = eframe::Renderer::Wgpu;
 
-    // Default window size
-    let mut window_size = egui::vec2(DESIGN_W * UI_SCALE, DESIGN_H * UI_SCALE);
-    let mut window_pos: Option<egui::Pos2> = None;
-
-    if let Some((x, y, w, h)) = utils::detect_primary_monitor_xrandr() {
+    // Auto-detect monitor size and position window, or fallback to defaults
+    let (window_size, window_pos) = if let Some((x, y, w, h)) = utils::detect_primary_monitor_xrandr() {
         let ww = (w as f32 * 0.75).round();
         let hh = (h as f32 * 0.75).round();
-        window_size = egui::vec2(ww, hh);
+        let size = egui::vec2(ww, hh);
         let px = x + ((w - ww as i32) / 2);
         let py = y + ((h - hh as i32) / 2);
-        window_pos = Some(egui::Pos2::new(px as f32, py as f32));
-    }
+        let pos = Some(egui::Pos2::new(px as f32, py as f32));
+        (size, pos)
+    } else {
+        // Fallback: 75% of 1920x1080
+        (egui::vec2(1440.0, 810.0), None)
+    };
 
     let mut vp = egui::ViewportBuilder::default().with_inner_size([window_size.x, window_size.y]);
     if let Some(pos) = window_pos {
