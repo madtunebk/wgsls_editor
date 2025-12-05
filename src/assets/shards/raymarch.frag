@@ -1,17 +1,6 @@
-// Uniforms struct
-struct Uniforms {
-    time: f32,
-    audio_bass: f32,
-    audio_mid: f32,
-    audio_high: f32,
-    resolution: vec2<f32>,
-    _pad0: vec2<f32>,
-}
+// 3D raymarching demo with audio reactivity
 
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
-// 3D rotation matrix
+// 3D rotation matrices
 fn rotate_y(a: f32) -> mat3x3<f32> {
     let s = sin(a);
     let c = cos(a);
@@ -38,26 +27,37 @@ fn sd_box(p: vec3<f32>, b: vec3<f32>) -> f32 {
     return length(max(q, vec3<f32>(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
 
-// Raymarching
-fn scene(p: vec3<f32>) -> f32 {
-    var pos = p;
-    let t = uniforms.time;
-    let bass = uniforms.audio_bass;
+// Scene SDF
+fn map(p: vec3<f32>, t: f32, bass: f32) -> f32 {
+    var p_var = p;
     
-    // Infinite repetition
-    pos = vec3<f32>(
-        (pos.x + 1.0) % 2.0 - 1.0,
-        (pos.y + 1.0) % 2.0 - 1.0,
-        pos.z
+    // Rotate the scene
+    p_var = rotate_y(t * 0.5) * p_var;
+    p_var = rotate_x(t * 0.3) * p_var;
+    
+    // Audio reactive box size
+    let box_size = vec3<f32>(0.5 + bass * 0.3);
+    let d1 = sd_box(p_var, box_size);
+    
+    // Add a repeating grid of boxes
+    let grid_p = p_var - vec3<f32>(
+        round(p_var.x / 2.0) * 2.0,
+        round(p_var.y / 2.0) * 2.0,
+        round(p_var.z / 2.0) * 2.0
     );
+    let d2 = sd_box(grid_p, vec3<f32>(0.2));
     
-    // Rotate boxes
-    pos = rotate_y(t + bass * 2.0) * rotate_x(t * 0.7) * pos;
-    
-    // Audio reactive size
-    let size = vec3<f32>(0.3 + bass * 0.2, 0.3 + uniforms.audio_mid * 0.2, 0.3 + uniforms.audio_high * 0.2);
-    
-    return sd_box(pos, size);
+    return min(d1, d2);
+}
+
+// Calculate normal
+fn calc_normal(p: vec3<f32>, t: f32, bass: f32) -> vec3<f32> {
+    let e = vec2<f32>(0.001, 0.0);
+    return normalize(vec3<f32>(
+        map(p + e.xyy, t, bass) - map(p - e.xyy, t, bass),
+        map(p + e.yxy, t, bass) - map(p - e.yxy, t, bass),
+        map(p + e.yyx, t, bass) - map(p - e.yyx, t, bass)
+    ));
 }
 
 @fragment
@@ -65,41 +65,52 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     var uv = (in.uv * 2.0 - 1.0) * vec2<f32>(uniforms.resolution.x / uniforms.resolution.y, 1.0);
     
     let t = uniforms.time;
+    let bass = uniforms.audio_bass;
+    let mid = uniforms.audio_mid;
+    let high = uniforms.audio_high;
     
-    // Camera
-    var ro = vec3<f32>(0.0, 0.0, -3.0 - sin(t * 0.5) * 2.0);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    // Camera setup
+    let camera_pos = vec3<f32>(0.0, 0.0, -3.0 - bass);
+    let ray_dir = normalize(vec3<f32>(uv, 1.0));
     
     // Raymarch
+    var ray_pos = camera_pos;
     var total_dist = 0.0;
-    var col = vec3<f32>(0.0);
+    var hit = false;
     
-    for (var i = 0; i < 80; i++) {
-        let p = ro + rd * total_dist;
-        let d = scene(p);
-        
-        if (d < 0.001 || total_dist > 20.0) {
+    for (var i = 0; i < 64; i++) {
+        let dist = map(ray_pos, t, bass);
+        if dist < 0.001 {
+            hit = true;
             break;
         }
-        
-        total_dist += d;
-        
-        // Glow effect
-        let glow = 0.02 / (d * d);
-        let freq_color = vec3<f32>(
-            uniforms.audio_bass,
-            uniforms.audio_mid,
-            uniforms.audio_high
-        );
-        col += glow * freq_color * 0.01;
+        ray_pos += ray_dir * dist;
+        total_dist += dist;
+        if total_dist > 20.0 {
+            break;
+        }
     }
     
-    // Color based on distance traveled
-    let depth_color = 1.0 - total_dist / 20.0;
-    col += vec3<f32>(depth_color) * vec3<f32>(0.8, 0.4, 1.0) * 0.1;
+    var col = vec3<f32>(0.0);
     
-    // Boost with audio
-    col *= 1.0 + (uniforms.audio_bass + uniforms.audio_mid + uniforms.audio_high) * 0.3;
+    if hit {
+        let normal = calc_normal(ray_pos, t, bass);
+        let light_dir = normalize(vec3<f32>(1.0, 1.0, -1.0));
+        let diffuse = max(dot(normal, light_dir), 0.0);
+        
+        // Audio reactive colors
+        col = vec3<f32>(
+            0.5 + 0.5 * sin(total_dist + t + bass * 3.14),
+            0.5 + 0.5 * sin(total_dist + t * 1.3 + mid * 3.14),
+            0.5 + 0.5 * sin(total_dist + t * 1.7 + high * 3.14)
+        ) * diffuse;
+        
+        // Add some ambient
+        col += vec3<f32>(0.1, 0.1, 0.15);
+    } else {
+        // Background gradient
+        col = vec3<f32>(0.0, 0.0, 0.1) * (1.0 - length(uv) * 0.5);
+    }
     
     return vec4<f32>(col, 1.0);
 }
