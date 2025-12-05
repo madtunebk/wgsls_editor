@@ -40,6 +40,7 @@ pub struct TopApp {
     debug_bass: f32,
     debug_mid: f32,
     debug_high: f32,
+    audio_file_path: Option<String>,
 
     // Toast notifications
     toast_mgr: ToastManager,
@@ -72,22 +73,12 @@ impl TopApp {
             debug_bass: 0.0,
             debug_mid: 0.0,
             debug_high: 0.0,
+            audio_file_path: None,
 
             toast_mgr: ToastManager::default(),
         };
 
-        // Start audio capture from file
-        let audio_path = "src/assets/test.mp3";
-        log::info!("Starting audio playback from: {}", audio_path);
-        match crate::utils::audio_file::start_file_audio(
-            app.bass_energy.clone(),
-            app.mid_energy.clone(),
-            app.high_energy.clone(),
-            audio_path
-        ) {
-            Some(_) => log::info!("Audio playback initialized successfully"),
-            None => log::warn!("Failed to initialize audio playback"),
-        }
+        // Audio will be loaded via file picker in settings
 
         // Compile initial shader
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
@@ -178,6 +169,7 @@ impl eframe::App for TopApp {
 
         // Floating overlays
         // Settings overlay
+        let mut load_audio_request: Option<String> = None;
         settings_menu::settings_overlay(
             ctx,
             &mut self.show_settings,
@@ -190,7 +182,14 @@ impl eframe::App for TopApp {
             &self.bass_energy,
             &self.mid_energy,
             &self.high_energy,
+            &self.audio_file_path,
+            &mut load_audio_request,
         );
+
+        // Handle audio file loading request
+        if let Some(path) = load_audio_request {
+            self.load_audio_file(path);
+        }
 
         // Toast notifications - only show window if there are active toasts
         if self.toast_mgr.has_toasts() {
@@ -494,5 +493,31 @@ impl TopApp {
         self.vertex = DEFAULT_VERTEX.to_string();
         self.fragment = DEFAULT_FRAGMENT.to_string();
         self.apply_shader();
+    }
+
+    fn load_audio_file(&mut self, path: String) {
+        log::info!("Loading audio file: {}", path);
+        
+        match crate::utils::audio_file::start_file_audio(
+            self.bass_energy.clone(),
+            self.mid_energy.clone(),
+            self.high_energy.clone(),
+            &path
+        ) {
+            Some(_) => {
+                self.audio_file_path = Some(path.clone());
+                self.toast_mgr.show_success(&format!("Audio loaded: {}", 
+                    std::path::Path::new(&path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&path)
+                ));
+                log::info!("Audio playback initialized successfully");
+            }
+            None => {
+                self.toast_mgr.show_error("Failed to load audio file");
+                log::warn!("Failed to initialize audio playback from: {}", path);
+            }
+        }
     }
 }

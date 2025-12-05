@@ -13,6 +13,8 @@ pub fn settings_overlay(
     bass_energy: &Arc<Mutex<f32>>,
     mid_energy: &Arc<Mutex<f32>>,
     high_energy: &Arc<Mutex<f32>>,
+    audio_file_path: &Option<String>,
+    on_load_audio: &mut Option<String>,
 ) {
     if !*show_settings && !*show_audio_overlay {
         return;
@@ -69,6 +71,45 @@ pub fn settings_overlay(
             ui.group(|ui| {
                 ui.set_min_width(320.0);
                 ui.heading("🎵 Audio Visualization");
+                ui.add_space(5.0);
+
+                // Audio file selection
+                ui.label(egui::RichText::new("Audio File:").strong());
+                ui.horizontal(|ui| {
+                    let file_text = if let Some(path) = audio_file_path {
+                        std::path::Path::new(path)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("Unknown")
+                            .to_string()
+                    } else {
+                        "No audio loaded".to_string()
+                    };
+                    
+                    ui.label(
+                        egui::RichText::new(file_text)
+                            .monospace()
+                            .color(if audio_file_path.is_some() {
+                                egui::Color32::from_rgb(100, 200, 100)
+                            } else {
+                                egui::Color32::from_rgb(150, 150, 150)
+                            })
+                    );
+                });
+
+                ui.add_space(5.0);
+
+                if ui.button("📁 Load Audio File...").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Audio", &["mp3", "wav", "ogg", "flac"])
+                        .pick_file()
+                    {
+                        *on_load_audio = Some(path.to_string_lossy().to_string());
+                    }
+                }
+
+                ui.add_space(5.0);
+                ui.separator();
                 ui.add_space(5.0);
 
                 ui.checkbox(debug_audio, "Debug Mode (Manual Control)");
