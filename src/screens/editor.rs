@@ -2,14 +2,12 @@ use eframe::egui;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::screens::tabs::{FragmentTab, VertexTab};
+use crate::screens::tabs::{MainImageTab, BufferATab, BufferBTab, BufferCTab, BufferDTab};
 use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
     format_shader_error, validate_shader, BufferKind, MultiPassCallback, MultiPassPipelines,
     ShaderError, ToastManager,
 };
-#[cfg(feature = "code_editor")]
-use crate::utils::wgsl_syntax;
 
 // Default shaders
 const DEFAULT_VERTEX: &str = include_str!("../assets/shards/default.vert");
@@ -55,9 +53,12 @@ pub struct TopApp {
     current_buffer: BufferKind,
     buffer_shaders: std::collections::HashMap<BufferKind, (String, String)>, // (vertex, fragment)
     
-    // Tab instances per buffer
-    fragment_tabs: std::collections::HashMap<BufferKind, FragmentTab>,
-    vertex_tabs: std::collections::HashMap<BufferKind, VertexTab>,
+    // Individual tab instances for each buffer
+    main_image_tab: MainImageTab,
+    buffer_a_tab: BufferATab,
+    buffer_b_tab: BufferBTab,
+    buffer_c_tab: BufferCTab,
+    buffer_d_tab: BufferDTab,
     
     saved_shaders: Option<std::collections::HashMap<BufferKind, (String, String)>>, // Saved state for Ctrl+S
     active_tab: u8, // 0 = Fragment, 1 = Vertex
@@ -118,19 +119,40 @@ impl TopApp {
         
         // Initialize tab instances for each buffer
         let font_size = 14.0;
-        let mut fragment_tabs = std::collections::HashMap::new();
-        let mut vertex_tabs = std::collections::HashMap::new();
-        
-        for (buffer_kind, (vertex, fragment)) in &buffer_shaders {
-            fragment_tabs.insert(*buffer_kind, FragmentTab::new(fragment.clone(), font_size));
-            vertex_tabs.insert(*buffer_kind, VertexTab::new(vertex.clone(), font_size));
-        }
+        let main_image_tab = MainImageTab::new(
+            DEFAULT_VERTEX.to_string(),
+            DEFAULT_FRAGMENT.to_string(),
+            font_size,
+        );
+        let buffer_a_tab = BufferATab::new(
+            DEFAULT_VERTEX.to_string(),
+            "// Buffer A\n".to_string(),
+            font_size,
+        );
+        let buffer_b_tab = BufferBTab::new(
+            DEFAULT_VERTEX.to_string(),
+            "// Buffer B\n".to_string(),
+            font_size,
+        );
+        let buffer_c_tab = BufferCTab::new(
+            DEFAULT_VERTEX.to_string(),
+            "// Buffer C\n".to_string(),
+            font_size,
+        );
+        let buffer_d_tab = BufferDTab::new(
+            DEFAULT_VERTEX.to_string(),
+            "// Buffer D\n".to_string(),
+            font_size,
+        );
         
         let mut app = Self {
             current_buffer: BufferKind::MainImage,
             buffer_shaders,
-            fragment_tabs,
-            vertex_tabs,
+            main_image_tab,
+            buffer_a_tab,
+            buffer_b_tab,
+            buffer_c_tab,
+            buffer_d_tab,
             saved_shaders: None,
             active_tab: 0,
 
@@ -670,26 +692,48 @@ impl TopApp {
 
     fn render_code_editor(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
         let buffer_key = self.current_buffer;
-        let buffer_name = buffer_key.as_str();
+        let is_fragment_tab = self.active_tab == 0;
         
-        if self.active_tab == 0 {
-            // Fragment tab
-            if let Some(tab) = self.fragment_tabs.get_mut(&buffer_key) {
-                tab.render(ui, buffer_name);
-                
-                // Sync code back to buffer_shaders
-                if let Some((_, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
-                    *fragment = tab.get_code().to_string();
+        // Delegate to the appropriate buffer-specific tab
+        match buffer_key {
+            BufferKind::MainImage => {
+                self.main_image_tab.render(ui, is_fragment_tab);
+                let (v, f) = self.main_image_tab.get_shaders();
+                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
+                    *vertex = v.to_string();
+                    *fragment = f.to_string();
                 }
             }
-        } else {
-            // Vertex tab
-            if let Some(tab) = self.vertex_tabs.get_mut(&buffer_key) {
-                tab.render(ui, buffer_name);
-                
-                // Sync code back to buffer_shaders
-                if let Some((vertex, _)) = self.buffer_shaders.get_mut(&buffer_key) {
-                    *vertex = tab.get_code().to_string();
+            BufferKind::BufferA => {
+                self.buffer_a_tab.render(ui, is_fragment_tab);
+                let (v, f) = self.buffer_a_tab.get_shaders();
+                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
+                    *vertex = v.to_string();
+                    *fragment = f.to_string();
+                }
+            }
+            BufferKind::BufferB => {
+                self.buffer_b_tab.render(ui, is_fragment_tab);
+                let (v, f) = self.buffer_b_tab.get_shaders();
+                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
+                    *vertex = v.to_string();
+                    *fragment = f.to_string();
+                }
+            }
+            BufferKind::BufferC => {
+                self.buffer_c_tab.render(ui, is_fragment_tab);
+                let (v, f) = self.buffer_c_tab.get_shaders();
+                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
+                    *vertex = v.to_string();
+                    *fragment = f.to_string();
+                }
+            }
+            BufferKind::BufferD => {
+                self.buffer_d_tab.render(ui, is_fragment_tab);
+                let (v, f) = self.buffer_d_tab.get_shaders();
+                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
+                    *vertex = v.to_string();
+                    *fragment = f.to_string();
                 }
             }
         }
@@ -848,12 +892,11 @@ impl TopApp {
     }
 
     fn update_all_tab_font_sizes(&mut self) {
-        for tab in self.fragment_tabs.values_mut() {
-            tab.set_font_size(self.editor_font_size);
-        }
-        for tab in self.vertex_tabs.values_mut() {
-            tab.set_font_size(self.editor_font_size);
-        }
+        self.main_image_tab.set_font_size(self.editor_font_size);
+        self.buffer_a_tab.set_font_size(self.editor_font_size);
+        self.buffer_b_tab.set_font_size(self.editor_font_size);
+        self.buffer_c_tab.set_font_size(self.editor_font_size);
+        self.buffer_d_tab.set_font_size(self.editor_font_size);
     }
 
     fn load_preset_shader(&mut self, name: &str) {
@@ -878,12 +921,28 @@ impl TopApp {
             *fragment = preset_content.to_string();
             *vertex = DEFAULT_VERTEX.to_string();
             
-            // Sync with tabs
-            if let Some(frag_tab) = self.fragment_tabs.get_mut(&self.current_buffer) {
-                frag_tab.set_code(preset_content.to_string());
-            }
-            if let Some(vert_tab) = self.vertex_tabs.get_mut(&self.current_buffer) {
-                vert_tab.set_code(DEFAULT_VERTEX.to_string());
+            // Sync with the appropriate tab
+            match self.current_buffer {
+                BufferKind::MainImage => {
+                    self.main_image_tab.set_fragment(preset_content.to_string());
+                    self.main_image_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                }
+                BufferKind::BufferA => {
+                    self.buffer_a_tab.set_fragment(preset_content.to_string());
+                    self.buffer_a_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                }
+                BufferKind::BufferB => {
+                    self.buffer_b_tab.set_fragment(preset_content.to_string());
+                    self.buffer_b_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                }
+                BufferKind::BufferC => {
+                    self.buffer_c_tab.set_fragment(preset_content.to_string());
+                    self.buffer_c_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                }
+                BufferKind::BufferD => {
+                    self.buffer_d_tab.set_fragment(preset_content.to_string());
+                    self.buffer_d_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                }
             }
         }
         self.apply_shader();
