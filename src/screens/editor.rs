@@ -48,6 +48,7 @@ pub struct TopApp {
     // Buffer system
     current_buffer: BufferType,
     buffer_shaders: std::collections::HashMap<BufferType, (String, String)>, // (vertex, fragment)
+    active_tab: u8, // 0=Fragment, 1=Vertex
 
     // Shader pipeline
     shader_shared: Arc<Mutex<Option<Arc<ShaderPipeline>>>>,
@@ -92,6 +93,7 @@ impl TopApp {
         let mut app = Self {
             current_buffer: BufferType::MainImage,
             buffer_shaders,
+            active_tab: 0,
 
             shader_shared: Arc::new(Mutex::new(None)),
             shader_needs_update: Arc::new(AtomicBool::new(false)),
@@ -354,18 +356,38 @@ impl TopApp {
 
                 let tab_h = 36.0;
                 
-                // Buffer dropdown (full width)
-                egui::ComboBox::from_id_salt("buffer_selector")
-                    .selected_text(format!("🎬 {}", self.current_buffer.as_str()))
-                    .height(tab_h)
-                    .show_ui(ui, |ui| {
-                        for buffer in BufferType::all() {
-                            let is_selected = buffer == self.current_buffer;
-                            if ui.selectable_label(is_selected, buffer.as_str()).clicked() {
-                                self.switch_buffer(buffer);
-                            }
-                        }
-                    });
+                // Buffer dropdown (takes 70% width)
+                ui.horizontal(|ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width() * 0.70, tab_h),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            egui::ComboBox::from_id_salt("buffer_selector")
+                                .selected_text(format!("🎬 {}", self.current_buffer.as_str()))
+                                .height(tab_h)
+                                .show_ui(ui, |ui| {
+                                    for buffer in BufferType::all() {
+                                        let is_selected = buffer == self.current_buffer;
+                                        if ui.selectable_label(is_selected, buffer.as_str()).clicked() {
+                                            self.switch_buffer(buffer);
+                                        }
+                                    }
+                                });
+                        },
+                    );
+                    
+                    // Vertex tab button (takes remaining 30%)
+                    let vertex_selected = self.active_tab == 1;
+                    let vertex_button = egui::Button::new(
+                        egui::RichText::new("⚡ Vertex").size(13.0)
+                    )
+                    .selected(vertex_selected)
+                    .min_size(egui::vec2(ui.available_width(), tab_h));
+                    
+                    if ui.add(vertex_button).clicked() {
+                        self.active_tab = if vertex_selected { 0 } else { 1 };
+                    }
+                });
             });
 
             ui.separator();
@@ -497,35 +519,34 @@ impl TopApp {
     fn render_code_editor(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
         #[cfg(feature = "code_editor")]
         {
-            // Get mutable reference to current buffer's shaders
             let buffer_key = self.current_buffer;
             if let Some((vertex_code, fragment_code)) = self.buffer_shaders.get_mut(&buffer_key) {
-                // Fragment shader (collapsible, open by default)
-                let frag_header = egui::collapsing_header::CollapsingState::load_with_default_open(
-                    ui.ctx(),
-                    egui::Id::new(format!("frag_header_{:?}", buffer_key)),
-                    true,
-                );
-                
-                frag_header.show_header(ui, |ui| {
-                    ui.label(egui::RichText::new("📝 Fragment Shader").strong().size(13.0));
-                }).body(|ui| {
+                if self.active_tab == 0 {
+                    // Fragment shader with collapsible section
+                    let frag_header = egui::collapsing_header::CollapsingState::load_with_default_open(
+                        ui.ctx(),
+                        egui::Id::new(format!("frag_header_{:?}", buffer_key)),
+                        true,
+                    );
+                    
+                    frag_header.show_header(ui, |ui| {
+                        ui.label(egui::RichText::new("📝 Fragment Shader").strong().size(13.0));
+                    }).body(|ui| {
+                        ui.add_space(4.0);
+                        let frag_id = format!("frag_{:?}", buffer_key);
+                        egui_code_editor::CodeEditor::default()
+                            .id_source(&frag_id)
+                            .with_fontsize(self.editor_font_size)
+                            .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
+                            .with_syntax(wgsl_syntax::wgsl())
+                            .with_numlines(true)
+                            .show(ui, fragment_code);
+                    });
+                } else {
+                    // Vertex shader editor (full view when tab is active)
+                    ui.label(egui::RichText::new("⚡ Vertex Shader").strong().size(13.0));
                     ui.add_space(4.0);
-                    let frag_id = format!("frag_{:?}", buffer_key);
-                    egui_code_editor::CodeEditor::default()
-                        .id_source(&frag_id)
-                        .with_fontsize(self.editor_font_size)
-                        .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
-                        .with_syntax(wgsl_syntax::wgsl())
-                        .with_numlines(true)
-                        .show(ui, fragment_code);
-                });
-                
-                ui.add_space(6.0);
-                
-                // Vertex shader (collapsible, closed by default)
-                ui.collapsing(egui::RichText::new("⚡ Vertex Shader (Advanced)").strong().size(13.0), |ui| {
-                    ui.add_space(4.0);
+                    
                     let vert_id = format!("vert_{:?}", buffer_key);
                     egui_code_editor::CodeEditor::default()
                         .id_source(&vert_id)
@@ -534,7 +555,7 @@ impl TopApp {
                         .with_syntax(wgsl_syntax::wgsl())
                         .with_numlines(true)
                         .show(ui, vertex_code);
-                });
+                }
             }
         }
 
@@ -542,16 +563,8 @@ impl TopApp {
         {
             let buffer_key = self.current_buffer;
             if let Some((vertex_code, fragment_code)) = self.buffer_shaders.get_mut(&buffer_key) {
-                // Fragment shader (collapsible, open by default)
-                let frag_header = egui::collapsing_header::CollapsingState::load_with_default_open(
-                    ui.ctx(),
-                    egui::Id::new(format!("frag_header_{:?}", buffer_key)),
-                    true,
-                );
-                
-                frag_header.show_header(ui, |ui| {
-                    ui.label(egui::RichText::new("Fragment Shader").strong());
-                }).body(|ui| {
+                if self.active_tab == 0 {
+                    // Fragment shader
                     let frag_id = egui::Id::new(format!("frag_{:?}", buffer_key));
                     ui.add(
                         egui::TextEdit::multiline(fragment_code)
@@ -559,14 +572,10 @@ impl TopApp {
                             .font(egui::TextStyle::Monospace)
                             .code_editor()
                             .desired_width(f32::INFINITY)
-                            .desired_rows(20),
+                            .desired_rows(30),
                     );
-                });
-                
-                ui.add_space(6.0);
-                
-                // Vertex shader (collapsible, closed by default)
-                ui.collapsing("Vertex Shader (Advanced)", |ui| {
+                } else {
+                    // Vertex shader
                     let vert_id = egui::Id::new(format!("vert_{:?}", buffer_key));
                     ui.add(
                         egui::TextEdit::multiline(vertex_code)
@@ -574,9 +583,9 @@ impl TopApp {
                             .font(egui::TextStyle::Monospace)
                             .code_editor()
                             .desired_width(f32::INFINITY)
-                            .desired_rows(15),
+                            .desired_rows(30),
                     );
-                });
+                }
             }
         }
     }
