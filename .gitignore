@@ -42,6 +42,6 @@ ARCHITECTURE.md
 REFACTORING_SUMMARY.md
 CHANGELOG.md
 
-# TempRS integration
-TempRS/                  # TempRS repo (separate git)
-.TMRS/                   # Shared shader files
+# TempRS integration (separate repos)
+TempRS/
+.TMRS/
