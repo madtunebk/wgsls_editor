@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
-    format_shader_error, BufferKind, MultiPassCallback, MultiPassPipelines, ShaderError,
-    ToastManager,
+    format_shader_error, validate_shader, BufferKind, MultiPassCallback, MultiPassPipelines,
+    ShaderError, ToastManager,
 };
 #[cfg(feature = "code_editor")]
 use crate::utils::wgsl_syntax;
@@ -158,11 +158,32 @@ impl eframe::App for TopApp {
                 let device = &render_state.device;
                 let format = render_state.target_format;
                 
-                // Build sources map for all buffers
+                // Build sources map for all buffers with validation
                 let mut sources = std::collections::HashMap::new();
+                let mut validation_error: Option<ShaderError> = None;
                 
                 for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
                     if let Some((vertex, fragment)) = self.buffer_shaders.get(&buffer_kind) {
+                        // Validate vertex shader separately (skip if it's the default)
+                        if !vertex.trim().is_empty() && vertex.trim() != DEFAULT_VERTEX.trim() {
+                            if let Err(e) = validate_shader(vertex) {
+                                validation_error = Some(ShaderError::ValidationError(
+                                    format!("[{:?}] Vertex Shader: {}", buffer_kind, e)
+                                ));
+                                break;
+                            }
+                        }
+                        
+                        // Validate fragment shader separately (skip if empty or just comments)
+                        if !fragment.trim().is_empty() && !fragment.trim().starts_with("//") {
+                            if let Err(e) = validate_shader(fragment) {
+                                validation_error = Some(ShaderError::ValidationError(
+                                    format!("[{:?}] Fragment Shader: {}", buffer_kind, e)
+                                ));
+                                break;
+                            }
+                        }
+                        
                         let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
                         sources.insert(buffer_kind, combined);
                     }
@@ -172,6 +193,16 @@ impl eframe::App for TopApp {
                 if !sources.contains_key(&BufferKind::MainImage) {
                     let default_combined = format!("{}\n\n{}", DEFAULT_VERTEX.trim(), DEFAULT_FRAGMENT.trim());
                     sources.insert(BufferKind::MainImage, default_combined);
+                }
+                
+                // Check if validation failed
+                if let Some(err) = validation_error {
+                    *self.last_error.lock().unwrap() = Some(err.clone());
+                    let formatted = format_shader_error(&err);
+                    self.error_message = formatted.clone();
+                    self.show_error_window = true;
+                    log::error!("[TopApp] Shader validation failed: {}", formatted);
+                    return;
                 }
                 
                 log::debug!("[TopApp] Compiling multi-pass pipeline with {} buffers", sources.len());
