@@ -326,7 +326,7 @@ impl eframe::App for TopApp {
         );
         // Propagate font size changes from settings menu to all tabs
         if (self.editor_font_size - old_font_size).abs() > 0.01 {
-            self.update_all_tab_font_sizes();
+            self.propagate_font_size_to_tabs();
         }
 
         // Shader Properties window (using component)
@@ -730,17 +730,17 @@ impl TopApp {
             // Ctrl/Cmd + Plus
             if i.modifiers.command && i.key_pressed(egui::Key::Plus) {
                 self.editor_font_size = (self.editor_font_size + 2.0).min(48.0);
-                self.update_all_tab_font_sizes();
+                self.propagate_font_size_to_tabs();
             }
             // Ctrl/Cmd + Minus
             if i.modifiers.command && i.key_pressed(egui::Key::Minus) {
                 self.editor_font_size = (self.editor_font_size - 2.0).max(12.0);
-                self.update_all_tab_font_sizes();
+                self.propagate_font_size_to_tabs();
             }
             // Ctrl/Cmd + 0
             if i.modifiers.command && i.key_pressed(egui::Key::Num0) {
                 self.editor_font_size = 16.0;
-                self.update_all_tab_font_sizes();
+                self.propagate_font_size_to_tabs();
             }
             // Ctrl/Cmd + Enter
             if i.modifiers.command && i.key_pressed(egui::Key::Enter) {
@@ -894,6 +894,15 @@ impl TopApp {
             .show_info(&format!("Switched to {}", new_buffer.as_str()));
     }
 
+    // Push font size from TopApp to all tabs (used when settings menu changes it)
+    fn propagate_font_size_to_tabs(&mut self) {
+        self.main_image_tab.set_font_size(self.editor_font_size);
+        self.buffer_a_tab.set_font_size(self.editor_font_size);
+        self.buffer_b_tab.set_font_size(self.editor_font_size);
+        self.buffer_c_tab.set_font_size(self.editor_font_size);
+        self.buffer_d_tab.set_font_size(self.editor_font_size);
+    }
+
     fn update_all_tab_font_sizes(&mut self) {
         // Sync current tab's font size to TopApp field
         self.editor_font_size = match self.current_buffer {
@@ -905,11 +914,7 @@ impl TopApp {
         };
         
         // Propagate to all tabs
-        self.main_image_tab.set_font_size(self.editor_font_size);
-        self.buffer_a_tab.set_font_size(self.editor_font_size);
-        self.buffer_b_tab.set_font_size(self.editor_font_size);
-        self.buffer_c_tab.set_font_size(self.editor_font_size);
-        self.buffer_d_tab.set_font_size(self.editor_font_size);
+        self.propagate_font_size_to_tabs();
     }
 
     fn load_preset_shader(&mut self, name: &str) {

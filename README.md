@@ -1,6 +1,6 @@
 # WebShard Editor
 
-A modern WGSL shader editor built with Rust and egui, featuring real-time shader compilation, syntax highlighting, and audio-reactive capabilities.
+A modern WGSL shader editor built with Rust and egui, featuring real-time multi-pass shader compilation, syntax highlighting, and audio-reactive capabilities.
 
 ![Rust](https://img.shields.io/badge/rust-2021-orange.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
@@ -10,14 +10,14 @@ A modern WGSL shader editor built with Rust and egui, featuring real-time shader
 - 🎨 **Real-time WGSL Shader Editor** - Write and preview WGSL shaders with instant feedback
 - 🌈 **Syntax Highlighting** - Full WGSL syntax highlighting with color-coded tokens
 - 🔊 **Audio Reactive** - FFT-based audio analysis for shader uniforms (bass, mid, high frequencies)
-- 🎬 **Multi-Buffer Support** - MainImage, BufferA-D with separate vertex/fragment shaders
+- 🎬 **Multi-Pass Rendering** - MainImage + 4 buffers (A-D) with texture sampling between passes
 - ⚡ **WGPU Backend** - Hardware-accelerated rendering using WebGPU
-- 💾 **State Management** - Save/restore shader checkpoints for safe experimentation
-- 🎯 **Dual Editor** - Separate vertex and fragment shader editing
-- 🛠️ **Error Handling** - Detailed shader compilation error reporting with line numbers
-- ⌨️ **Keyboard Shortcuts** - Efficient workflow with Ctrl+E export, Ctrl+S save, Ctrl+R restore
+- 🎯 **Auto-Injection** - Automatic uniform and vertex shader injection (no boilerplate needed)
+- 🛠️ **Validation** - Real-time shader validation with detailed error reporting
+- ⌨️ **Keyboard Shortcuts** - Efficient workflow with Ctrl+Enter apply, Ctrl+Plus/Minus font size
 - 🎭 **Custom Themes** - Dark theme optimized for shader development
-- 📝 **Toast Notifications** - User-friendly status messages
+- 📝 **Preset Shaders** - Built-in examples: psychedelic, tunnel, raymarch, fractal
+- 💾 **State Persistence** - Auto-saves editor state between sessions
 
 ## Prerequisites
 
@@ -25,62 +25,91 @@ A modern WGSL shader editor built with Rust and egui, featuring real-time shader
 - WGPU-compatible graphics driver
 - Linux (primary development platform, should work on other platforms)
 
-## Critical Shader Requirements
+## Quick Start
 
-All WGSL shaders **must** conform to the following structure to work in WebShard Editor:
+WebShard Editor uses **auto-injection** - you only write the fragment shader logic!
 
-### 1. Uniforms Structure (Required)
-The shader **must** define this exact 32-byte uniforms struct:
+### Minimal Shader Example
 
 ```wgsl
-struct Uniforms {
-    time: f32,           // Elapsed time in seconds
-    audio_bass: f32,     // Bass frequency energy (0.0-1.0)
-    audio_mid: f32,      // Mid frequency energy (0.0-1.0)
-    audio_high: f32,     // High frequency energy (0.0-1.0)
-    resolution: vec2<f32>, // Screen resolution in pixels
-    _pad0: vec2<f32>,    // Padding for alignment (required)
+// Just write your fragment shader - uniforms and vertex shader are auto-injected!
+@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+    let t = uniforms.time;
+    
+    // Animated gradient
+    let col = vec3(
+        0.5 + 0.5 * sin(uv.x * 10.0 + t),
+        0.5 + 0.5 * cos(uv.y * 10.0 + t),
+        0.5 + 0.5 * sin((uv.x + uv.y) * 5.0 + t)
+    );
+    
+    return vec4(col, 1.0);
 }
+```
 
+### Auto-Injected Code
+
+The editor automatically provides:
+
+**1. Uniforms Structure:**
+```wgsl
+struct Uniforms {
+    time: f32,
+    audio_bass: f32,
+    audio_mid: f32,
+    audio_high: f32,
+    resolution: vec2<f32>,
+    _pad0: vec2<f32>,
+}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 ```
 
-### 2. Entry Points (Required)
-Shaders **must** define these entry point functions:
-
-```wgsl
-// Vertex shader entry point
-@vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> YourVertexOutput {
-    // Your vertex shader code
-}
-
-// Fragment shader entry point
-@fragment
-fn fs_main(@location(0) coords: vec2<f32>) -> @location(0) vec4<f32> {
-    // Your fragment shader code
-}
-```
-
-### 3. Vertex Output Structure
-A vertex output struct with these attributes (any field names allowed):
-
+**2. Vertex Shader:**
 ```wgsl
 struct VSOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
 }
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VSOut {
+    // Full-screen triangle vertex shader (auto-injected)
+}
 ```
 
-### Validation
-The editor validates all shaders before compilation:
-- ✅ Uniforms struct matches expected structure (32 bytes)
-- ✅ Entry points `vs_main` and `fs_main` exist
-- ✅ Required WGSL attributes present
-- ✅ WGSL syntax via naga parser
-- ❌ Shaders failing validation show detailed error messages
+**3. Multi-Pass Textures:**
+```wgsl
+@group(1) @binding(0) var buffer_a_texture: texture_2d<f32>;
+@group(1) @binding(1) var buffer_b_texture: texture_2d<f32>;
+@group(1) @binding(2) var buffer_c_texture: texture_2d<f32>;
+@group(1) @binding(3) var buffer_d_texture: texture_2d<f32>;
+@group(1) @binding(4) var texture_sampler: sampler;
+```
 
-See `src/assets/shards/demo_buffers.frag` for a complete working example.
+### Multi-Pass Example
+
+**Buffer A** (generates pattern):
+```wgsl
+@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
+    let spiral = atan2(in.uv.y - 0.5, in.uv.x - 0.5) + uniforms.time;
+    return vec4(sin(spiral * 5.0), 0.0, 0.0, 1.0);
+}
+```
+
+**MainImage** (samples Buffer A):
+```wgsl
+@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
+    // Sample from Buffer A
+    let buffer_a_color = textureSample(buffer_a_texture, texture_sampler, in.uv);
+    
+    // Apply effects
+    return vec4(buffer_a_color.rgb * 2.0, 1.0);
+}
+```
 
 ## Building & Running
 
@@ -137,7 +166,13 @@ cargo clippy --all-targets -- -D warnings
 ├── src/
 │   ├── main.rs              # Application entry point
 │   ├── screens/
-│   │   ├── editor.rs        # Main shader editor UI
+│   │   ├── editor.rs        # Main shader editor UI and state
+│   │   ├── tabs/            # Individual buffer tab modules
+│   │   │   ├── main_image_tab.rs
+│   │   │   ├── buffer_a_tab.rs
+│   │   │   ├── buffer_b_tab.rs
+│   │   │   ├── buffer_c_tab.rs
+│   │   │   └── buffer_d_tab.rs
 │   │   └── mod.rs
 │   ├── ui_components/
 │   │   ├── settings_menu.rs # Settings panel
@@ -149,19 +184,19 @@ cargo clippy --all-targets -- -D warnings
 │   │   ├── errors.rs        # Error formatting
 │   │   ├── fonts.rs         # Font registration
 │   │   ├── monitors.rs      # Monitor detection
-│   │   ├── pipeline.rs      # WGSL shader pipeline
+│   │   ├── multi_buffer_pipeline.rs # Multi-pass rendering pipeline
 │   │   ├── text.rs          # Text utilities
 │   │   ├── theme.rs         # UI theming
 │   │   ├── toast.rs         # Toast notifications
 │   │   ├── wgsl_syntax.rs   # WGSL syntax highlighting
 │   │   └── mod.rs
-│   ├── funcs/
-│   │   └── mod.rs
 │   └── assets/
-│       ├── fonts/           # Material Symbols & Inter fonts
-│       └── shards/          # Default shader templates
-│           ├── test.frag
-│           └── test.vert
+│       ├── fonts/           # Material Symbols & fonts
+│       └── shards/          # Preset shader templates
+│           ├── psychedelic.frag
+│           ├── tunnel.frag
+│           ├── raymarch.frag
+│           └── fractal.frag
 ├── data/
 │   └── wgsl_builtins.json   # WGSL language definitions
 └── Cargo.toml
@@ -169,52 +204,70 @@ cargo clippy --all-targets -- -D warnings
 
 ## Usage
 
-### Shader Editing
+### Buffer Tabs
 
-1. **Switch Buffers**: Toggle between MainImage, BufferA-D, and Vertex shader tabs
-2. **Live Preview**: Shaders compile and render in real-time
-3. **Save State**: Press `Ctrl+S` to save current shader state before experimenting
-4. **Restore State**: Press `Ctrl+R` to revert to last saved checkpoint
-5. **Export**: Press `Ctrl+E` to export shader to file
-6. **Error Messages**: Compilation errors appear with line numbers and descriptions
+1. **MainImage** - Final output (required)
+2. **Buffer A-D** - Intermediate render targets for multi-pass effects
 
-### Multi-Buffer Workflow
+Each buffer has its own fragment shader. Switch between tabs to edit different passes.
 
-WebShard supports multi-buffer rendering similar to ShaderToy:
+### Workflow
 
-- **MainImage**: Final output fragment shader
-- **BufferA-D**: Persistent buffers for complex effects (feedback, blur, etc.)
-- **Vertex Shader**: Shared vertex shader for all buffers
+1. **Write Shader**: Only write `@fragment fn fs_main()` - boilerplate is auto-injected
+2. **Apply Changes**: Press `Ctrl+Enter` or click "Apply Pipeline"
+3. **Load Presets**: Click "Shader Properties" to load example shaders
+4. **Multi-Pass**: Use Buffer A-D for feedback, blur, or complex effects
+5. **Audio Reactive**: Access `uniforms.audio_bass/mid/high` for audio-driven visuals
 
-See `src/assets/shards/demo_buffers.frag` for a working example.
+### Preset Shaders
 
-### Audio Features
-
-- Load audio files to drive shader uniforms
-- Access FFT data: `u_bass`, `u_mid`, `u_high` in your shaders
-- Real-time frequency analysis visualization
+- **Default** - Simple gradient animation
+- **Psychedelic** - Flowing noise patterns with audio reactivity  
+- **Tunnel** - Audio-reactive spiral tunnel
+- **Raymarch** - 3D raymarching scene with rotating boxes
+- **Fractal** - Julia set fractal explorer
 
 ### Keyboard Shortcuts
 
-- `Ctrl+Enter` - Apply shader changes (compile and update)
-- `Ctrl+E` - Export shader to file
-- `Ctrl+S` - Save shader state (create checkpoint)
-- `Ctrl+R` - Restore shader state (revert to last checkpoint)
-- `Ctrl+,` - Open settings
+- `Ctrl+Enter` - Apply shader changes (compile pipeline)
 - `Ctrl++` / `Ctrl+-` - Increase/decrease editor font size
-- Tab switching for buffer editing (MainImage, BufferA-D, Vertex)
-
+- `Ctrl+0` - Reset font size to default
+- `Ctrl+,` - Open settings menu
 ## Shader Uniforms
 
-The following uniforms are automatically provided to your shaders:
+Access these in your fragment shader via the auto-injected `uniforms` struct:
 
 ```wgsl
-@group(0) @binding(0) var<uniform> u_time: f32;      // Time in seconds
-@group(0) @binding(1) var<uniform> u_resolution: vec2<f32>; // Screen resolution
-@group(0) @binding(2) var<uniform> u_mouse: vec2<f32>;      // Mouse position
-@group(0) @binding(3) var<uniform> u_bass: f32;      // Bass frequency energy
-@group(0) @binding(4) var<uniform> u_mid: f32;       // Mid frequency energy
-@group(0) @binding(5) var<uniform> u_high: f32;      // High frequency energy
+@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
+    let t = uniforms.time;                    // Time in seconds
+    let bass = uniforms.audio_bass;           // Bass energy (0.0-1.0)
+    let mid = uniforms.audio_mid;             // Mid energy (0.0-1.0)
+    let high = uniforms.audio_high;           // High energy (0.0-1.0)
+    let res = uniforms.resolution;            // Screen resolution
+    let uv = in.uv;                           // UV coordinates (0.0-1.0)
+    
+    // Your shader code here
+    return vec4(uv.x, uv.y, sin(t), 1.0);
+}
+```
+
+## Multi-Pass Textures
+
+Sample from other buffers in MainImage:
+
+```wgsl
+@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
+    // Sample Buffer A at current UV
+    let buffer_a = textureSample(buffer_a_texture, texture_sampler, in.uv);
+    
+    // Sample Buffer B with offset
+    let buffer_b = textureSample(buffer_b_texture, texture_sampler, in.uv + vec2(0.01));
+    
+    return mix(buffer_a, buffer_b, 0.5);
+}
+```oup(0) @binding(5) var<uniform> u_high: f32;      // High frequency energy
 ```
 
 ## Dependencies
@@ -246,15 +299,17 @@ MIT License - see LICENSE file for details
 ## Acknowledgments
 
 - Built with [egui](https://github.com/emilk/egui)
-- WGSL shader language by the WebGPU working group
-- Inspired by [ShaderToy](https://www.shadertoy.com/)
+## Roadmap
 
-## Troubleshooting
-
-### Graphics Driver Issues
-
-If you encounter WGPU initialization errors:
-```bash
+- [x] Multi-pass shader support (MainImage + 4 buffers)
+- [x] Shader presets library (psychedelic, tunnel, raymarch, fractal)
+- [x] Auto-injection of uniforms and vertex shaders
+- [ ] Export shader as image/video
+- [ ] Texture/image inputs
+- [ ] Mouse input uniforms
+- [ ] WebGL export
+- [ ] Plugin system
+- [ ] Cloud shader sharing
 # Check WGPU backend
 RUST_LOG=wgpu=debug cargo run
 ```
