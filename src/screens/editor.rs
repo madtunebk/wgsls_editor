@@ -14,6 +14,41 @@ use crate::utils::wgsl_syntax;
 const DEFAULT_VERTEX: &str = include_str!("../assets/shards/default.vert");
 const DEFAULT_FRAGMENT: &str = include_str!("../assets/shards/default.frag");
 
+// Standard boilerplate auto-injected into every shader
+const SHADER_BOILERPLATE: &str = r#"
+// Auto-injected uniforms (available in all shaders)
+struct Uniforms {
+    time: f32,
+    audio_bass: f32,
+    audio_mid: f32,
+    audio_high: f32,
+    resolution: vec2<f32>,
+    _pad0: vec2<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> uniforms: Uniforms;
+
+// Auto-injected vertex output structure
+struct VSOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}
+"#;
+
+// Standard vertex shader (auto-injected if user doesn't provide one)
+const STANDARD_VERTEX: &str = r#"
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
+    var out: VSOut;
+    let x = f32((vi & 1u) << 2u);
+    let y = f32((vi & 2u) << 1u);
+    out.pos = vec4<f32>(x - 1.0, 1.0 - y, 0.0, 1.0);
+    out.uv = vec2<f32>(x * 0.5, y * 0.5);
+    return out;
+}
+"#;
+
 pub struct TopApp {
     // Buffer system
     current_buffer: BufferKind,
@@ -158,40 +193,50 @@ impl eframe::App for TopApp {
                 let device = &render_state.device;
                 let format = render_state.target_format;
                 
-                // Build sources map for all buffers with validation
+                // Build sources map for all buffers with auto-injected boilerplate
                 let mut sources = std::collections::HashMap::new();
                 let mut validation_error: Option<ShaderError> = None;
                 
                 for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
                     if let Some((vertex, fragment)) = self.buffer_shaders.get(&buffer_kind) {
-                        // Validate vertex shader separately (skip if it's the default)
-                        if !vertex.trim().is_empty() && vertex.trim() != DEFAULT_VERTEX.trim() {
-                            if let Err(e) = validate_shader(vertex) {
-                                validation_error = Some(ShaderError::ValidationError(
-                                    format!("[{:?}] Vertex Shader: {}", buffer_kind, e)
-                                ));
-                                break;
+                        let fragment_trimmed = fragment.trim();
+                        
+                        // Skip empty fragments (except MainImage which needs default)
+                        if fragment_trimmed.is_empty() || fragment_trimmed.starts_with("//") {
+                            if buffer_kind == BufferKind::MainImage {
+                                // MainImage must exist, use default
+                                let combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
+                                sources.insert(buffer_kind, combined);
                             }
+                            continue;
                         }
                         
-                        // Validate fragment shader separately (skip if empty or just comments)
-                        if !fragment.trim().is_empty() && !fragment.trim().starts_with("//") {
-                            if let Err(e) = validate_shader(fragment) {
-                                validation_error = Some(ShaderError::ValidationError(
-                                    format!("[{:?}] Fragment Shader: {}", buffer_kind, e)
-                                ));
-                                break;
-                            }
+                        // Auto-inject boilerplate + standard vertex unless user provides custom vertex
+                        let vertex_trimmed = vertex.trim();
+                        let user_vertex = if vertex_trimmed.is_empty() || vertex_trimmed == DEFAULT_VERTEX.trim() {
+                            STANDARD_VERTEX
+                        } else {
+                            vertex_trimmed
+                        };
+                        
+                        // Build complete shader: boilerplate + vertex + fragment
+                        let complete_shader = format!("{}\n{}\n{}", SHADER_BOILERPLATE, user_vertex, fragment_trimmed);
+                        
+                        // Validate the complete shader
+                        if let Err(e) = validate_shader(&complete_shader) {
+                            validation_error = Some(ShaderError::ValidationError(
+                                format!("[{:?}] {}", buffer_kind, e)
+                            ));
+                            break;
                         }
                         
-                        let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
-                        sources.insert(buffer_kind, combined);
+                        sources.insert(buffer_kind, complete_shader);
                     }
                 }
                 
                 // Ensure MainImage exists
                 if !sources.contains_key(&BufferKind::MainImage) {
-                    let default_combined = format!("{}\n\n{}", DEFAULT_VERTEX.trim(), DEFAULT_FRAGMENT.trim());
+                    let default_combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
                     sources.insert(BufferKind::MainImage, default_combined);
                 }
                 
