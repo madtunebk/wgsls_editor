@@ -45,11 +45,6 @@ impl BufferType {
 }
 
 pub struct TopApp {
-    // Shader code - per buffer
-    vertex: String,
-    fragment: String,
-    active_tab: u8, // 0=Fragment, 1=Vertex
-    
     // Buffer system
     current_buffer: BufferType,
     buffer_shaders: std::collections::HashMap<BufferType, (String, String)>, // (vertex, fragment)
@@ -95,10 +90,6 @@ impl TopApp {
         buffer_shaders.insert(BufferType::BufferD, (DEFAULT_VERTEX.to_string(), "// Buffer D\n".to_string()));
         
         let mut app = Self {
-            vertex: DEFAULT_VERTEX.to_string(),
-            fragment: DEFAULT_FRAGMENT.to_string(),
-            active_tab: 0,
-            
             current_buffer: BufferType::MainImage,
             buffer_shaders,
 
@@ -134,7 +125,12 @@ impl TopApp {
             let format = render_state.target_format;
             app.target_format = Some(format);
 
-            let combined = format!("{}\n\n{}", app.vertex, app.fragment);
+            let (vertex_src, fragment_src) = app.buffer_shaders
+                .get(&BufferType::MainImage)
+                .cloned()
+                .unwrap_or_else(|| (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string()));
+            
+            let combined = format!("{}\n\n{}", vertex_src, fragment_src);
             match ShaderPipeline::new(&device, format, &combined) {
                 Ok(pipeline) => {
                     *app.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
@@ -170,10 +166,13 @@ impl eframe::App for TopApp {
                 let device = &render_state.device;
                 let format = render_state.target_format;
                 
-                // Combine and clean up shader sources
-                let vertex_clean = self.vertex.trim();
-                let fragment_clean = self.fragment.trim();
-                let combined = format!("{}\n\n{}", vertex_clean, fragment_clean);
+                // Get current buffer's shaders
+                let (vertex_clean, fragment_clean) = self.buffer_shaders
+                    .get(&self.current_buffer)
+                    .cloned()
+                    .unwrap_or_else(|| (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string()));
+                
+                let combined = format!("{}\n\n{}", vertex_clean.trim(), fragment_clean.trim());
                 
                 log::debug!("[TopApp] Combined shader length: {} bytes", combined.len());
 
@@ -498,57 +497,71 @@ impl TopApp {
     fn render_code_editor(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
         #[cfg(feature = "code_editor")]
         {
-            // Fragment shader editor (always visible)
-            ui.label(egui::RichText::new("Fragment Shader").strong().size(13.0));
-            ui.add_space(4.0);
-            
-            egui_code_editor::CodeEditor::default()
-                .id_source("frag")
-                .with_fontsize(self.editor_font_size)
-                .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
-                .with_syntax(wgsl_syntax::wgsl())
-                .with_numlines(true)
-                .show(ui, &mut self.fragment);
-            
-            ui.add_space(10.0);
-            
-            // Vertex shader (collapsible)
-            ui.collapsing(egui::RichText::new("⚡ Vertex Shader (Advanced)").strong().size(13.0), |ui| {
+            // Get mutable reference to current buffer's shaders
+            let buffer_key = self.current_buffer;
+            if let Some((vertex_code, fragment_code)) = self.buffer_shaders.get_mut(&buffer_key) {
+                // Fragment shader editor (always visible)
+                ui.label(egui::RichText::new("Fragment Shader").strong().size(13.0));
                 ui.add_space(4.0);
+                
+                // Use unique ID per buffer to maintain separate editor state
+                let frag_id = format!("frag_{:?}", buffer_key);
                 egui_code_editor::CodeEditor::default()
-                    .id_source("vert")
+                    .id_source(&frag_id)
                     .with_fontsize(self.editor_font_size)
                     .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
                     .with_syntax(wgsl_syntax::wgsl())
                     .with_numlines(true)
-                    .show(ui, &mut self.vertex);
-            });
+                    .show(ui, fragment_code);
+                
+                ui.add_space(10.0);
+                
+                // Vertex shader (collapsible)
+                ui.collapsing(egui::RichText::new("⚡ Vertex Shader (Advanced)").strong().size(13.0), |ui| {
+                    ui.add_space(4.0);
+                    let vert_id = format!("vert_{:?}", buffer_key);
+                    egui_code_editor::CodeEditor::default()
+                        .id_source(&vert_id)
+                        .with_fontsize(self.editor_font_size)
+                        .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
+                        .with_syntax(wgsl_syntax::wgsl())
+                        .with_numlines(true)
+                        .show(ui, vertex_code);
+                });
+            }
         }
 
         #[cfg(not(feature = "code_editor"))]
         {
-            // Fallback: Fragment shader
-            ui.label("Fragment Shader:");
-            ui.add(
-                egui::TextEdit::multiline(&mut self.fragment)
-                    .font(egui::TextStyle::Monospace)
-                    .code_editor()
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(20),
-            );
-            
-            ui.add_space(10.0);
-            
-            // Vertex shader (collapsible)
-            ui.collapsing("Vertex Shader (Advanced)", |ui| {
+            let buffer_key = self.current_buffer;
+            if let Some((vertex_code, fragment_code)) = self.buffer_shaders.get_mut(&buffer_key) {
+                // Fallback: Fragment shader
+                ui.label("Fragment Shader:");
+                let frag_id = egui::Id::new(format!("frag_{:?}", buffer_key));
                 ui.add(
-                    egui::TextEdit::multiline(&mut self.vertex)
+                    egui::TextEdit::multiline(fragment_code)
+                        .id(frag_id)
                         .font(egui::TextStyle::Monospace)
                         .code_editor()
                         .desired_width(f32::INFINITY)
-                        .desired_rows(15),
+                        .desired_rows(20),
                 );
-            });
+                
+                ui.add_space(10.0);
+                
+                // Vertex shader (collapsible)
+                ui.collapsing("Vertex Shader (Advanced)", |ui| {
+                    let vert_id = egui::Id::new(format!("vert_{:?}", buffer_key));
+                    ui.add(
+                        egui::TextEdit::multiline(vertex_code)
+                            .id(vert_id)
+                            .font(egui::TextStyle::Monospace)
+                            .code_editor()
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(15),
+                    );
+                });
+            }
         }
     }
 
@@ -598,8 +611,13 @@ impl TopApp {
     }
 
     fn apply_shader(&mut self) {
+        let (vertex_len, fragment_len) = self.buffer_shaders
+            .get(&self.current_buffer)
+            .map(|(v, f)| (v.len(), f.len()))
+            .unwrap_or((0, 0));
+        
         log::info!("Apply shader requested (vertex: {} bytes, fragment: {} bytes)",
-            self.vertex.len(), self.fragment.len());
+            vertex_len, fragment_len);
         self.shader_needs_update.store(true, Ordering::Relaxed);
 
         // Clear previous error and toasts
@@ -609,8 +627,10 @@ impl TopApp {
 
     fn reset_shader(&mut self) {
         log::info!("Resetting shader to defaults");
-        self.vertex = DEFAULT_VERTEX.to_string();
-        self.fragment = DEFAULT_FRAGMENT.to_string();
+        if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&self.current_buffer) {
+            *vertex = DEFAULT_VERTEX.to_string();
+            *fragment = DEFAULT_FRAGMENT.to_string();
+        }
         self.apply_shader();
     }
 
@@ -645,25 +665,8 @@ impl TopApp {
             return;
         }
 
-        // Save current buffer's shaders
-        self.buffer_shaders.insert(
-            self.current_buffer,
-            (self.vertex.clone(), self.fragment.clone())
-        );
-
-        // Load new buffer's shaders
-        let (vertex, fragment) = self.buffer_shaders
-            .get(&new_buffer)
-            .cloned()
-            .unwrap_or_else(|| (DEFAULT_VERTEX.to_string(), "// Empty buffer\n".to_string()));
-
-        self.vertex = vertex;
-        self.fragment = fragment;
         self.current_buffer = new_buffer;
         
-        // Switch to fragment tab when changing buffers
-        self.active_tab = 0;
-
         log::info!("Switched to buffer: {}", new_buffer.as_str());
         self.toast_mgr.show_info(&format!("Switched to {}", new_buffer.as_str()));
     }
@@ -681,8 +684,10 @@ impl TopApp {
             }
         };
 
-        self.fragment = preset_content.to_string();
-        self.vertex = DEFAULT_VERTEX.to_string();
+        if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&self.current_buffer) {
+            *fragment = preset_content.to_string();
+            *vertex = DEFAULT_VERTEX.to_string();
+        }
         self.apply_shader();
         self.toast_mgr.show_success(&format!("Loaded preset: {}", name));
         log::info!("Loaded preset shader: {}", name);
