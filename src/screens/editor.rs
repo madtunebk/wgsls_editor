@@ -1,65 +1,23 @@
 use eframe::egui;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::screens::tabs::{MainImageTab, BufferATab, BufferBTab, BufferCTab, BufferDTab};
+use crate::screens::shader_buffer::ShaderBuffer;
 use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
-    format_shader_error, validate_shader, BufferKind, MultiPassCallback, MultiPassPipelines,
-    ShaderError, ToastManager,
+    catch_panic_mut, format_panic_message, format_shader_error, validate_shader, BufferKind,
+    MultiPassCallback, MultiPassPipelines, NotificationManager, ShaderError, DEFAULT_FONT_SIZE,
+    DEFAULT_FRAGMENT, DEFAULT_VERTEX, SHADER_BOILERPLATE, STANDARD_VERTEX,
+    DEFAULT_BUFFER_RESOLUTION, TEXTURE_BINDINGS,
 };
 
-// Default shaders
-const DEFAULT_VERTEX: &str = include_str!("../assets/shards/default.vert");
-const DEFAULT_FRAGMENT: &str = include_str!("../assets/shards/default.frag");
-
-// Standard boilerplate auto-injected into every shader
-const SHADER_BOILERPLATE: &str = r#"
-// Auto-injected uniforms (available in all shaders)
-struct Uniforms {
-    time: f32,
-    audio_bass: f32,
-    audio_mid: f32,
-    audio_high: f32,
-    resolution: vec2<f32>,
-    _pad0: vec2<f32>,
-}
-
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
-// Auto-injected vertex output structure
-struct VSOut {
-    @builtin(position) pos: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
-"#;
-
-// Standard vertex shader (auto-injected if user doesn't provide one)
-const STANDARD_VERTEX: &str = r#"
-@vertex
-fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
-    var out: VSOut;
-    let x = f32((vi & 1u) << 2u);
-    let y = f32((vi & 2u) << 1u);
-    out.pos = vec4<f32>(x - 1.0, 1.0 - y, 0.0, 1.0);
-    out.uv = vec2<f32>(x * 0.5, y * 0.5);
-    return out;
-}
-"#;
-
 pub struct TopApp {
-    // Buffer system
+    // Unified buffer system - single HashMap instead of 5 separate fields
+    buffers: HashMap<BufferKind, ShaderBuffer>,
     current_buffer: BufferKind,
-    
-    // Individual tab instances for each buffer (source of truth for shader code)
-    main_image_tab: MainImageTab,
-    buffer_a_tab: BufferATab,
-    buffer_b_tab: BufferBTab,
-    buffer_c_tab: BufferCTab,
-    buffer_d_tab: BufferDTab,
-    
-    saved_shaders: Option<std::collections::HashMap<BufferKind, (String, String)>>, // Saved state for Ctrl+S
+
+    saved_shaders: Option<HashMap<BufferKind, (String, String)>>,
 
     // Multi-pass shader pipeline
     shader_shared: Arc<Mutex<Option<Arc<MultiPassPipelines>>>>,
@@ -84,49 +42,67 @@ pub struct TopApp {
     debug_high: f32,
     audio_file_path: Option<String>,
 
-    // Toast notifications
-    toast_mgr: ToastManager,
+    // Notifications
+    notification_mgr: NotificationManager,
 }
 
 impl TopApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         log::info!("Initializing TopApp...");
-        
-        // Initialize tab instances for each buffer
-        let font_size = 14.0;
-        let main_image_tab = MainImageTab::new(
-            DEFAULT_VERTEX.to_string(),
-            DEFAULT_FRAGMENT.to_string(),
-            font_size,
+
+        // Initialize unified buffer system - single source of truth
+        let mut buffers = HashMap::with_capacity(5);
+
+        // MainImage with default shader
+        buffers.insert(
+            BufferKind::MainImage,
+            ShaderBuffer::new(
+                BufferKind::MainImage,
+                DEFAULT_VERTEX.to_string(),
+                DEFAULT_FRAGMENT.to_string(),
+            ),
         );
-        let buffer_a_tab = BufferATab::new(
-            DEFAULT_VERTEX.to_string(),
-            "// Buffer A\n".to_string(),
-            font_size,
+
+        // Buffers A-D with demo shaders
+        buffers.insert(
+            BufferKind::BufferA,
+            ShaderBuffer::new(
+                BufferKind::BufferA,
+                DEFAULT_VERTEX.to_string(),
+                include_str!("../assets/shards/buffer_a_demo.frag").to_string(),
+            ),
         );
-        let buffer_b_tab = BufferBTab::new(
-            DEFAULT_VERTEX.to_string(),
-            "// Buffer B\n".to_string(),
-            font_size,
+
+        buffers.insert(
+            BufferKind::BufferB,
+            ShaderBuffer::new(
+                BufferKind::BufferB,
+                DEFAULT_VERTEX.to_string(),
+                include_str!("../assets/shards/buffer_b_demo.frag").to_string(),
+            ),
         );
-        let buffer_c_tab = BufferCTab::new(
-            DEFAULT_VERTEX.to_string(),
-            "// Buffer C\n".to_string(),
-            font_size,
+
+        buffers.insert(
+            BufferKind::BufferC,
+            ShaderBuffer::new(
+                BufferKind::BufferC,
+                DEFAULT_VERTEX.to_string(),
+                include_str!("../assets/shards/buffer_c_demo.frag").to_string(),
+            ),
         );
-        let buffer_d_tab = BufferDTab::new(
-            DEFAULT_VERTEX.to_string(),
-            "// Buffer D\n".to_string(),
-            font_size,
+
+        buffers.insert(
+            BufferKind::BufferD,
+            ShaderBuffer::new(
+                BufferKind::BufferD,
+                DEFAULT_VERTEX.to_string(),
+                include_str!("../assets/shards/buffer_d_demo.frag").to_string(),
+            ),
         );
-        
+
         let mut app = Self {
+            buffers,
             current_buffer: BufferKind::MainImage,
-            main_image_tab,
-            buffer_a_tab,
-            buffer_b_tab,
-            buffer_c_tab,
-            buffer_d_tab,
             saved_shaders: None,
 
             shader_shared: Arc::new(Mutex::new(None)),
@@ -134,7 +110,7 @@ impl TopApp {
             last_error: Arc::new(Mutex::new(None)),
             target_format: None,
 
-            editor_font_size: 14.0,
+            editor_font_size: DEFAULT_FONT_SIZE,
             show_settings: false,
             show_error_window: false,
             error_message: String::new(),
@@ -149,10 +125,8 @@ impl TopApp {
             debug_high: 0.0,
             audio_file_path: None,
 
-            toast_mgr: ToastManager::default(),
+            notification_mgr: NotificationManager::default(),
         };
-
-        // Audio will be loaded via the file picker in settings
 
         // Load default shader into MainImage on startup
         app.load_preset_shader("default");
@@ -163,12 +137,9 @@ impl TopApp {
             let format = render_state.target_format;
             app.target_format = Some(format);
 
-            // Build sources map for initial compilation from tabs
             let sources = app.get_all_buffer_sources();
 
-            let screen_size = [1920, 1080]; // Initial buffer resolution
-            
-            match MultiPassPipelines::new(&device, format, screen_size, &sources) {
+            match MultiPassPipelines::new(&device, format, DEFAULT_BUFFER_RESOLUTION, &sources) {
                 Ok(pipeline) => {
                     *app.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
                 }
@@ -202,31 +173,30 @@ impl eframe::App for TopApp {
             if let Some(render_state) = frame.wgpu_render_state() {
                 let device = &render_state.device;
                 let format = render_state.target_format;
-                
+
                 // Build sources map for all buffers with auto-injected boilerplate
-                let mut sources = std::collections::HashMap::with_capacity(5);
+                let mut sources = HashMap::with_capacity(5);
                 let mut validation_error: Option<ShaderError> = None;
-                
+
                 for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
                     let (vertex, fragment) = self.get_buffer_shaders(buffer_kind);
                     let fragment_trimmed = fragment.trim();
-                    
+
                     // Skip empty fragments (except MainImage which needs default)
-                    // Check if there's actual code (not just comments)
                     let has_code = fragment_trimmed.lines()
                         .any(|line| {
                             let trimmed_line = line.trim();
                             !trimmed_line.is_empty() && !trimmed_line.starts_with("//")
                         });
-                    
+
                     if fragment_trimmed.is_empty() || !has_code {
                         if buffer_kind == BufferKind::MainImage {
-                            // MainImage must exist, use default - pre-computed constant
+                            // MainImage must exist, use default
                             sources.insert(buffer_kind, format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT));
                         }
                         continue;
                     }
-                    
+
                     // Auto-inject boilerplate + standard vertex unless user provides custom vertex
                     let vertex_trimmed = vertex.trim();
                     let user_vertex = if vertex_trimmed.is_empty() || vertex_trimmed == DEFAULT_VERTEX.trim() {
@@ -234,17 +204,40 @@ impl eframe::App for TopApp {
                     } else {
                         vertex_trimmed
                     };
-                    
-                    // Build complete shader: boilerplate + vertex + fragment (single allocation)
+
+                    // Build complete shader with conditional texture bindings
+                    // MainImage gets texture bindings to sample from buffers A-D
+                    // Buffer A-D do NOT get texture bindings (they're independent)
+                    let needs_textures = buffer_kind == BufferKind::MainImage;
+
                     let mut complete_shader = String::with_capacity(
-                        SHADER_BOILERPLATE.len() + user_vertex.len() + fragment_trimmed.len() + 4
+                        SHADER_BOILERPLATE.len() + user_vertex.len() + fragment_trimmed.len() + 200
                     );
                     complete_shader.push_str(SHADER_BOILERPLATE);
+
+                    // Add texture bindings ONLY for MainImage
+                    // Layout matches multi_buffer_pipeline.rs bind group layout:
+                    // Buffer A: texture @0, sampler @1
+                    // Buffer B: texture @2, sampler @3
+                    // Buffer C: texture @4, sampler @5
+                    // Buffer D: texture @6, sampler @7
+                    if needs_textures {
+                        complete_shader.push_str("\n// Multi-pass texture bindings\n");
+                        complete_shader.push_str("@group(1) @binding(0) var buffer_a_texture: texture_2d<f32>;\n");
+                        complete_shader.push_str("@group(1) @binding(1) var buffer_a_sampler: sampler;\n");
+                        complete_shader.push_str("@group(1) @binding(2) var buffer_b_texture: texture_2d<f32>;\n");
+                        complete_shader.push_str("@group(1) @binding(3) var buffer_b_sampler: sampler;\n");
+                        complete_shader.push_str("@group(1) @binding(4) var buffer_c_texture: texture_2d<f32>;\n");
+                        complete_shader.push_str("@group(1) @binding(5) var buffer_c_sampler: sampler;\n");
+                        complete_shader.push_str("@group(1) @binding(6) var buffer_d_texture: texture_2d<f32>;\n");
+                        complete_shader.push_str("@group(1) @binding(7) var buffer_d_sampler: sampler;\n");
+                    }
+
                     complete_shader.push('\n');
                     complete_shader.push_str(user_vertex);
                     complete_shader.push('\n');
                     complete_shader.push_str(fragment_trimmed);
-                    
+
                     // Validate the complete shader
                     if let Err(e) = validate_shader(&complete_shader) {
                         validation_error = Some(ShaderError::ValidationError(
@@ -252,16 +245,16 @@ impl eframe::App for TopApp {
                         ));
                         break;
                     }
-                    
+
                     sources.insert(buffer_kind, complete_shader);
                 }
-                
+
                 // Ensure MainImage exists
                 if !sources.contains_key(&BufferKind::MainImage) {
                     let default_combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
                     sources.insert(BufferKind::MainImage, default_combined);
                 }
-                
+
                 // Check if validation failed
                 if let Some(err) = validation_error {
                     *self.last_error.lock().unwrap() = Some(err.clone());
@@ -271,29 +264,45 @@ impl eframe::App for TopApp {
                     log::error!("[TopApp] Shader validation failed: {}", formatted);
                     return;
                 }
-                
+
                 log::debug!("[TopApp] Compiling multi-pass pipeline with {} buffers", sources.len());
 
-                // Get screen size for buffer resolution (use a reasonable default)
-                let screen_size = [1920, 1080]; // TODO: Get actual viewport size
+                // Wrap pipeline creation in panic catcher to prevent crashes
+                // Use catch_panic_mut since WGPU Device is not UnwindSafe
+                let result = catch_panic_mut(|| {
+                    MultiPassPipelines::new(device, format, DEFAULT_BUFFER_RESOLUTION, &sources)
+                });
 
-                match MultiPassPipelines::new(device, format, screen_size, &sources) {
-                    Ok(pipeline) => {
+                match result {
+                    Ok(Ok(pipeline)) => {
+                        // Success: pipeline created
                         *self.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
                         *self.last_error.lock().unwrap() = None;
-                        self.toast_mgr.dismiss_all();
-                        self.toast_mgr.show_success("Multi-pass shader compiled successfully!");
+                        self.notification_mgr.dismiss_all();
+                        self.notification_mgr.success("Multi-pass shader compiled successfully!");
                         log::info!("[TopApp] Multi-pass shader compiled successfully");
                     }
-                    Err(err) => {
+                    Ok(Err(err)) => {
+                        // Expected error: shader compilation/validation error
                         *self.last_error.lock().unwrap() = Some(err.clone());
                         let formatted = format_shader_error(&err);
-                        
-                        // Show the error in a native egui window
+
                         self.error_message = formatted.clone();
                         self.show_error_window = true;
-                        
+
                         log::error!("[TopApp] Shader compilation failed: {}", formatted);
+                    }
+                    Err(panic_msg) => {
+                        // Caught panic: WGPU validation error or internal panic
+                        let formatted = format_panic_message(&panic_msg);
+                        let error = ShaderError::CompilationError(formatted.clone());
+
+                        *self.last_error.lock().unwrap() = Some(error);
+                        self.error_message = formatted.clone();
+                        self.show_error_window = true;
+                        self.notification_mgr.error("Pipeline creation panicked - see error window");
+
+                        log::error!("[TopApp] Pipeline creation panicked: {}", panic_msg);
                     }
                 }
             }
@@ -302,10 +311,10 @@ impl eframe::App for TopApp {
         // Main layout: SidePanel (left) + CentralPanel (right)
         egui::SidePanel::left("editor_panel")
             .resizable(false)
-            .exact_width(790.0) // Slightly smaller to account for internal spacing
+            .exact_width(790.0)
             .frame(
                 egui::Frame::default()
-                    .inner_margin(0.0) // Remove default padding
+                    .inner_margin(0.0)
                     .fill(egui::Color32::from_rgb(20, 20, 25)),
             )
             .show(ctx, |ui| {
@@ -317,19 +326,18 @@ impl eframe::App for TopApp {
         });
 
         // Floating overlays
-        // Settings overlay (editor only)
         let old_font_size = self.editor_font_size;
         settings_menu::settings_overlay(
             ctx,
             &mut self.show_settings,
             &mut self.editor_font_size,
         );
-        // Propagate font size changes from settings menu to all tabs
+        // Font size changes propagated automatically - no need to update individual tabs
         if (self.editor_font_size - old_font_size).abs() > 0.01 {
-            self.propagate_font_size_to_tabs();
+            log::debug!("Font size changed to {}", self.editor_font_size);
         }
 
-        // Shader Properties window (using component)
+        // Shader Properties window
         if self.show_preset_menu {
             let action = shader_properties::render(
                 ctx,
@@ -358,19 +366,19 @@ impl eframe::App for TopApp {
             }
         }
 
-        // Toast notifications - only show the window if there are active toasts
-        if self.toast_mgr.has_toasts() {
+        // Toast notifications
+        if self.notification_mgr.has_notifications() {
             egui::Window::new("")
                 .id(egui::Id::new("toast_notifications_window"))
                 .title_bar(false)
                 .anchor(egui::Align2::RIGHT_BOTTOM, [-10.0, -10.0])
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
-                    self.toast_mgr.render(ui);
+                    self.notification_mgr.render(ui);
                 });
         }
-        
-        // Error window - native egui error display with proper font
+
+        // Error window
         if self.show_error_window {
             egui::Window::new("Shader Error")
                 .id(egui::Id::new("shader_error_window"))
@@ -387,8 +395,6 @@ impl eframe::App for TopApp {
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             ui.add_space(8.0);
-
-                            // Use the monospace font explicitly for Unicode support
                             ui.style_mut().override_text_style =
                                 Some(egui::TextStyle::Monospace);
 
@@ -406,7 +412,7 @@ impl eframe::App for TopApp {
                     ui.add_space(5.0);
 
                     ui.horizontal(|ui| {
-                        ui.add_space(ui.available_width() - 70.0); // Right-align
+                        ui.add_space(ui.available_width() - 70.0);
                         if ui.button("  Close  ").clicked() {
                             self.show_error_window = false;
                         }
@@ -418,12 +424,11 @@ impl eframe::App for TopApp {
 
 impl TopApp {
     fn render_editor_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Remove all default spacing from this UI
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
         ui.spacing_mut().window_margin = egui::Margin::ZERO;
 
         ui.vertical(|ui| {
-            // A: Top bar - buffer and vertex tabs
+            // Buffer tabs
             ui.horizontal(|ui| {
                 ui.style_mut().visuals.widgets.inactive.weak_bg_fill =
                     egui::Color32::from_rgb(30, 30, 35);
@@ -433,119 +438,49 @@ impl TopApp {
                     egui::Color32::from_rgb(35, 35, 40);
 
                 let tab_h = 36.0;
-                
-                // Tabs: MainImage + Buffer A–D (vertex auto-injected, no separate vertex tab)
-                ui.horizontal(|ui| {
-                    let total_tabs = 5.0; // MainImage + 4 buffers (A–D)
-                    let tab_width =
-                        (ui.available_width() - (total_tabs - 1.0) * 4.0) / total_tabs;
-                    
-                    // MainImage tab
-                    let main_selected = self.current_buffer == BufferKind::MainImage;
-                    let main_button = egui::Button::new(
-                        egui::RichText::new("MainImage").size(12.0),
+                let total_tabs = 5.0;
+                let tab_width = (ui.available_width() - (total_tabs - 1.0) * 4.0) / total_tabs;
+
+                // Render tabs for all buffers
+                for (i, kind) in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD].iter().enumerate() {
+                    if i > 0 {
+                        ui.add_space(4.0);
+                    }
+
+                    let is_selected = self.current_buffer == *kind;
+                    let button = egui::Button::new(
+                        egui::RichText::new(kind.as_str()).size(12.0),
                     )
-                    .selected(main_selected)
+                    .selected(is_selected)
                     .min_size(egui::vec2(tab_width, tab_h));
-                    
-                    if ui.add(main_button).clicked() {
-                        self.switch_buffer(BufferKind::MainImage);
+
+                    if ui.add(button).clicked() {
+                        self.switch_buffer(*kind);
                     }
-                    
-                    ui.add_space(4.0);
-                    
-                    // Buffer A tab
-                    let is_buffer_a = self.current_buffer == BufferKind::BufferA;
-                    if ui
-                        .add_sized(
-                            egui::vec2(tab_width, tab_h),
-                            egui::Button::new(
-                                egui::RichText::new("Buffer A").size(12.0),
-                            )
-                            .selected(is_buffer_a),
-                    )
-                    .clicked()
-                    {
-                        self.switch_buffer(BufferKind::BufferA);
-                    }
-                    
-                    ui.add_space(4.0);
-                    
-                    // Buffer B tab
-                    let is_buffer_b = self.current_buffer == BufferKind::BufferB;
-                    if ui
-                        .add_sized(
-                            egui::vec2(tab_width, tab_h),
-                            egui::Button::new(
-                                egui::RichText::new("Buffer B").size(12.0),
-                            )
-                            .selected(is_buffer_b),
-                    )
-                    .clicked()
-                    {
-                        self.switch_buffer(BufferKind::BufferB);
-                    }
-                    
-                    ui.add_space(4.0);
-                    
-                    // Buffer C tab
-                    let is_buffer_c = self.current_buffer == BufferKind::BufferC;
-                    if ui
-                        .add_sized(
-                            egui::vec2(tab_width, tab_h),
-                            egui::Button::new(
-                                egui::RichText::new("Buffer C").size(12.0),
-                            )
-                            .selected(is_buffer_c),
-                    )
-                    .clicked()
-                    {
-                        self.switch_buffer(BufferKind::BufferC);
-                    }
-                    
-                    ui.add_space(4.0);
-                    
-                    // Buffer D tab
-                    let is_buffer_d = self.current_buffer == BufferKind::BufferD;
-                    if ui
-                        .add_sized(
-                            egui::vec2(tab_width, tab_h),
-                            egui::Button::new(
-                                egui::RichText::new("Buffer D").size(12.0),
-                            )
-                            .selected(is_buffer_d),
-                    )
-                    .clicked()
-                    {
-                        self.switch_buffer(BufferKind::BufferD);
-                    }
-                });
+                }
             });
 
             ui.separator();
 
-            // B: Text editor with floating settings gear overlay
+            // Editor area
             let button_height = 40.0;
             let separator_space = 1.0;
             let reserved = button_height + separator_space;
-
             let available_height = ui.available_height();
 
-            // Editor area with settings overlay
             let _editor_response = ui.allocate_ui_with_layout(
                 egui::vec2(ui.available_width(), available_height - reserved),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
-                    // Set the background to match the code editor theme
-                    let bg_color = egui::Color32::from_rgb(13, 17, 23); // GitHub Dark background
+                    let bg_color = egui::Color32::from_rgb(13, 17, 23);
                     ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
-                    
+
                     let editor_rect = ui.max_rect();
 
-                    // Code editor directly - NO WRAPPER ScrollArea (editor has its own .vscroll)
-                    self.render_code_editor(ui, ctx);
+                    // Render code editor for current buffer
+                    self.render_code_editor(ui);
 
-                    // Floating settings gear (top-right corner, shows on hover)
+                    // Floating buttons
                     let gear_size = 32.0;
                     let gear_pos = egui::pos2(
                         editor_rect.right() - gear_size - 8.0,
@@ -559,7 +494,7 @@ impl TopApp {
                     let is_hovered =
                         editor_rect.contains(ctx.pointer_hover_pos().unwrap_or_default());
                     if is_hovered || self.show_settings || self.show_preset_menu {
-                        // Presets button (above the settings gear)
+                        // Presets button
                         let preset_pos = egui::pos2(
                             editor_rect.right() - gear_size - 8.0,
                             editor_rect.top() + gear_size + 16.0,
@@ -568,7 +503,7 @@ impl TopApp {
                             preset_pos,
                             egui::vec2(gear_size, gear_size),
                         );
-                        
+
                         let preset_response = ui.put(
                             preset_rect,
                             egui::Button::new(
@@ -583,7 +518,7 @@ impl TopApp {
                         {
                             self.show_preset_menu = !self.show_preset_menu;
                         }
-                        
+
                         // Settings gear button
                         let gear_response = ui.put(
                             gear_rect,
@@ -603,95 +538,59 @@ impl TopApp {
                 },
             );
 
-            ui.separator();
+            ui.add_space(separator_space);
 
-            // C: Bottom action buttons - use allocate_ui_with_layout for exact pixel control
-            let available_rect = ui.available_rect_before_wrap();
-            let button_height = 40.0;
-            let spacing = 4.0;
+            // Bottom button bar
+            ui.horizontal(|ui| {
+                let button_w = (ui.available_width() - 8.0) / 2.0;
 
-            // Allocate exact space for the buttons, bypassing container overhead
-            let (apply_clicked, reset_clicked) = ui
-                .allocate_ui_with_layout(
-                    egui::vec2(available_rect.width(), button_height),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| {
-                        // Zero out all spacing except between buttons
-                        ui.spacing_mut().item_spacing = egui::vec2(spacing, 0.0);
-                        ui.spacing_mut().button_padding = egui::vec2(0.0, 6.0);
+                if ui
+                    .add_sized(
+                        egui::vec2(button_w, button_height),
+                        egui::Button::new(
+                            egui::RichText::new("⚡ Apply Pipeline")
+                                .size(14.0),
+                        ),
+                    )
+                    .on_hover_text("Ctrl+Enter")
+                    .clicked()
+                {
+                    self.apply_shader();
+                }
 
-                        // Calculate button widths from the exact allocated width
-                        let total_width = available_rect.width();
-                        let button_w = (total_width - spacing) / 2.0;
+                ui.add_space(8.0);
 
-                        // Apply button - primary action
-                        let apply = ui
-                            .add_sized(
-                                [button_w, button_height],
-                                egui::Button::new(
-                                    egui::RichText::new("Apply Shader")
-                                        .size(15.0)
-                                        .strong(),
-                                ),
-                            )
-                            .on_hover_text("Apply shader changes (Ctrl+Enter)")
-                            .clicked();
-
-                        // Reset button - secondary action
-                        let reset = ui
-                            .add_sized(
-                                [button_w, button_height],
-                                egui::Button::new(
-                                    egui::RichText::new("Reset")
-                                        .size(15.0)
-                                        .strong(),
-                                ),
-                            )
-                            .on_hover_text("Reset to the default shader")
-                            .clicked();
-
-                        (apply, reset)
-                    },
-                )
-                .inner;
-
-            // Handle button clicks outside the closure
-            if apply_clicked {
-                self.apply_shader();
-            }
-            if reset_clicked {
-                self.reset_shader();
-            }
+                if ui
+                    .add_sized(
+                        egui::vec2(button_w, button_height),
+                        egui::Button::new(
+                            egui::RichText::new("↻ Reset").size(14.0),
+                        ),
+                    )
+                    .on_hover_text("Reset current tab to its default shader")
+                    .clicked()
+                {
+                    self.reset_shader();
+                }
+            });
         });
     }
 
-    fn render_code_editor(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
-        let buffer_key = self.current_buffer;
-        
-        // Delegate to the appropriate buffer-specific tab (always show fragment - vertex is auto-injected)
-        match buffer_key {
-            BufferKind::MainImage => self.main_image_tab.render(ui, true),
-            BufferKind::BufferA => self.buffer_a_tab.render(ui, true),
-            BufferKind::BufferB => self.buffer_b_tab.render(ui, true),
-            BufferKind::BufferC => self.buffer_c_tab.render(ui, true),
-            BufferKind::BufferD => self.buffer_d_tab.render(ui, true),
+    fn render_code_editor(&mut self, ui: &mut egui::Ui) {
+        if let Some(buffer) = self.buffers.get_mut(&self.current_buffer) {
+            buffer.render(ui, true, self.editor_font_size);
         }
     }
 
-    // Helper: Get shaders from a specific buffer's tab
     fn get_buffer_shaders(&self, buffer: BufferKind) -> (&str, &str) {
-        match buffer {
-            BufferKind::MainImage => self.main_image_tab.get_shaders(),
-            BufferKind::BufferA => self.buffer_a_tab.get_shaders(),
-            BufferKind::BufferB => self.buffer_b_tab.get_shaders(),
-            BufferKind::BufferC => self.buffer_c_tab.get_shaders(),
-            BufferKind::BufferD => self.buffer_d_tab.get_shaders(),
-        }
+        self.buffers
+            .get(&buffer)
+            .map(|b| b.get_shaders())
+            .unwrap_or(("", ""))
     }
 
-    // Helper: Get all buffer sources for compilation (optimized with pre-allocation)
-    fn get_all_buffer_sources(&self) -> std::collections::HashMap<BufferKind, String> {
-        let mut sources = std::collections::HashMap::with_capacity(5);
+    fn get_all_buffer_sources(&self) -> HashMap<BufferKind, String> {
+        let mut sources = HashMap::with_capacity(5);
         for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
             let (vertex, fragment) = self.get_buffer_shaders(buffer_kind);
             let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
@@ -701,10 +600,8 @@ impl TopApp {
     }
 
     fn render_shader_preview(&mut self, ui: &mut egui::Ui) {
-        // D: Shader viewer (full panel)
         let size = ui.available_size();
-        let (rect, _response) =
-            ui.allocate_exact_size(size, egui::Sense::hover());
+        let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
 
         if let Some(pipeline_arc) = self.shader_shared.lock().unwrap().as_ref() {
             if self.debug_audio {
@@ -727,34 +624,24 @@ impl TopApp {
 
     fn handle_input(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
-            // Ctrl/Cmd + Plus
             if i.modifiers.command && i.key_pressed(egui::Key::Plus) {
                 self.editor_font_size = (self.editor_font_size + 2.0).min(48.0);
-                self.propagate_font_size_to_tabs();
             }
-            // Ctrl/Cmd + Minus
             if i.modifiers.command && i.key_pressed(egui::Key::Minus) {
                 self.editor_font_size = (self.editor_font_size - 2.0).max(12.0);
-                self.propagate_font_size_to_tabs();
             }
-            // Ctrl/Cmd + 0
             if i.modifiers.command && i.key_pressed(egui::Key::Num0) {
                 self.editor_font_size = 16.0;
-                self.propagate_font_size_to_tabs();
             }
-            // Ctrl/Cmd + Enter
             if i.modifiers.command && i.key_pressed(egui::Key::Enter) {
                 self.apply_shader();
             }
-            // Ctrl/Cmd + S - Save current state
             if i.modifiers.command && i.key_pressed(egui::Key::S) {
                 self.save_shader_state();
             }
-            // Ctrl/Cmd + Z - Restore saved state
             if i.modifiers.command && i.key_pressed(egui::Key::R) {
                 self.restore_shader_state();
             }
-            // Ctrl/Cmd + E - Export shard
             if i.modifiers.command && i.key_pressed(egui::Key::E) {
                 self.export_shard();
             }
@@ -762,107 +649,76 @@ impl TopApp {
     }
 
     fn apply_shader(&mut self) {
-        let (vertex, fragment) = self.main_image_tab.get_shaders();
-        let (vertex_len, fragment_len) = (vertex.len(), fragment.len());
-        
-        log::info!(
-            "Apply shader requested - compiling Main Image (vertex: {} bytes, fragment: {} bytes)",
-            vertex_len,
-            fragment_len
-        );
+        log::info!("Apply shader requested - compiling all buffers");
         self.shader_needs_update.store(true, Ordering::Relaxed);
-
-        // Clear the previous error and toasts
         *self.last_error.lock().unwrap() = None;
-        self.toast_mgr.dismiss_all();
+        self.notification_mgr.dismiss_all();
     }
 
     fn reset_shader(&mut self) {
-        log::info!("Resetting shader to defaults");
-        match self.current_buffer {
-            BufferKind::MainImage => {
-                self.main_image_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                self.main_image_tab.set_fragment(DEFAULT_FRAGMENT.to_string());
-            }
-            BufferKind::BufferA => {
-                self.buffer_a_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                self.buffer_a_tab.set_fragment("// Buffer A\n".to_string());
-            }
-            BufferKind::BufferB => {
-                self.buffer_b_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                self.buffer_b_tab.set_fragment("// Buffer B\n".to_string());
-            }
-            BufferKind::BufferC => {
-                self.buffer_c_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                self.buffer_c_tab.set_fragment("// Buffer C\n".to_string());
-            }
-            BufferKind::BufferD => {
-                self.buffer_d_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                self.buffer_d_tab.set_fragment("// Buffer D\n".to_string());
-            }
+        log::info!("Resetting {} to default shader", self.current_buffer.as_str());
+
+        if let Some(buffer) = self.buffers.get_mut(&self.current_buffer) {
+            buffer.set_vertex(DEFAULT_VERTEX.to_string());
+
+            let default_fragment = match self.current_buffer {
+                BufferKind::MainImage => include_str!("../assets/shards/default.frag"),
+                BufferKind::BufferA => include_str!("../assets/shards/buffer_a_demo.frag"),
+                BufferKind::BufferB => include_str!("../assets/shards/buffer_b_demo.frag"),
+                BufferKind::BufferC => include_str!("../assets/shards/buffer_c_demo.frag"),
+                BufferKind::BufferD => include_str!("../assets/shards/buffer_d_demo.frag"),
+            };
+
+            buffer.set_fragment(default_fragment.to_string());
         }
+
         self.apply_shader();
     }
 
     fn save_shader_state(&mut self) {
-        // Build HashMap from current tab state
-        let mut saved = std::collections::HashMap::new();
-        for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
-            let (v, f) = self.get_buffer_shaders(buffer_kind);
-            saved.insert(buffer_kind, (v.to_string(), f.to_string()));
+        let mut saved = HashMap::new();
+        for (kind, buffer) in &self.buffers {
+            let (v, f) = buffer.get_shaders();
+            saved.insert(*kind, (v.to_string(), f.to_string()));
         }
         self.saved_shaders = Some(saved);
-        self.toast_mgr.show_success("✓ Shader state saved!");
+        self.notification_mgr.success("✓ Shader state saved!");
         log::info!("Shader state saved (Ctrl+R to restore)");
     }
 
     fn restore_shader_state(&mut self) {
         if let Some(saved) = &self.saved_shaders {
-            // Restore to tabs
-            for (buffer_kind, (vertex, fragment)) in saved {
-                match buffer_kind {
-                    BufferKind::MainImage => {
-                        self.main_image_tab.set_vertex(vertex.clone());
-                        self.main_image_tab.set_fragment(fragment.clone());
-                    }
-                    BufferKind::BufferA => {
-                        self.buffer_a_tab.set_vertex(vertex.clone());
-                        self.buffer_a_tab.set_fragment(fragment.clone());
-                    }
-                    BufferKind::BufferB => {
-                        self.buffer_b_tab.set_vertex(vertex.clone());
-                        self.buffer_b_tab.set_fragment(fragment.clone());
-                    }
-                    BufferKind::BufferC => {
-                        self.buffer_c_tab.set_vertex(vertex.clone());
-                        self.buffer_c_tab.set_fragment(fragment.clone());
-                    }
-                    BufferKind::BufferD => {
-                        self.buffer_d_tab.set_vertex(vertex.clone());
-                        self.buffer_d_tab.set_fragment(fragment.clone());
-                    }
+            for (kind, (vertex, fragment)) in saved {
+                if let Some(buffer) = self.buffers.get_mut(kind) {
+                    buffer.set_vertex(vertex.clone());
+                    buffer.set_fragment(fragment.clone());
                 }
             }
-            self.toast_mgr.show_success("↶ Shader state restored!");
+            self.notification_mgr.success("↶ Shader state restored!");
             log::info!("Shader state restored from save point");
         } else {
-            self.toast_mgr.show_error("No saved state available");
+            self.notification_mgr.error("No saved state available");
             log::warn!("Restore failed: no saved state");
         }
     }
 
     fn load_audio_file(&mut self, path: String) {
         log::info!("Loading audio file: {}", path);
-        
-        match crate::utils::audio_file::start_file_audio(
-            self.bass_energy.clone(),
-            self.mid_energy.clone(),
-            self.high_energy.clone(),
-            &path,
-        ) {
-            Some(_) => {
+
+        // Wrap audio loading in panic catcher to prevent crashes from codec/decoder errors
+        let result = catch_panic_mut(|| {
+            crate::utils::audio_file::start_file_audio(
+                self.bass_energy.clone(),
+                self.mid_energy.clone(),
+                self.high_energy.clone(),
+                &path,
+            )
+        });
+
+        match result {
+            Ok(Some(_)) => {
                 self.audio_file_path = Some(path.clone());
-                self.toast_mgr.show_success(&format!(
+                self.notification_mgr.success(&format!(
                     "Audio loaded: {}",
                     std::path::Path::new(&path)
                         .file_name()
@@ -871,13 +727,14 @@ impl TopApp {
                 ));
                 log::info!("Audio playback initialized successfully");
             }
-            None => {
-                self.toast_mgr
-                    .show_error("Failed to load audio file");
-                log::warn!(
-                    "Failed to initialize audio playback from: {}",
-                    path
-                );
+            Ok(None) => {
+                self.notification_mgr.error("Failed to load audio file");
+                log::warn!("Failed to initialize audio playback from: {}", path);
+            }
+            Err(panic_msg) => {
+                let formatted = format_panic_message(&panic_msg);
+                self.notification_mgr.error(&format!("Audio loading crashed: {}", formatted));
+                log::error!("Audio loading panicked: {}", panic_msg);
             }
         }
     }
@@ -888,170 +745,130 @@ impl TopApp {
         }
 
         self.current_buffer = new_buffer;
-        
         log::info!("Switched to buffer: {:?}", new_buffer);
-        self.toast_mgr
-            .show_info(&format!("Switched to {}", new_buffer.as_str()));
-    }
-
-    // Push font size from TopApp to all tabs (used when settings menu changes it)
-    fn propagate_font_size_to_tabs(&mut self) {
-        self.main_image_tab.set_font_size(self.editor_font_size);
-        self.buffer_a_tab.set_font_size(self.editor_font_size);
-        self.buffer_b_tab.set_font_size(self.editor_font_size);
-        self.buffer_c_tab.set_font_size(self.editor_font_size);
-        self.buffer_d_tab.set_font_size(self.editor_font_size);
-    }
-
-    fn update_all_tab_font_sizes(&mut self) {
-        // Sync current tab's font size to TopApp field
-        self.editor_font_size = match self.current_buffer {
-            BufferKind::MainImage => self.main_image_tab.get_font_size(),
-            BufferKind::BufferA => self.buffer_a_tab.get_font_size(),
-            BufferKind::BufferB => self.buffer_b_tab.get_font_size(),
-            BufferKind::BufferC => self.buffer_c_tab.get_font_size(),
-            BufferKind::BufferD => self.buffer_d_tab.get_font_size(),
-        };
-        
-        // Propagate to all tabs
-        self.propagate_font_size_to_tabs();
+        self.notification_mgr.info(&format!("Switched to {}", new_buffer.as_str()));
     }
 
     fn load_preset_shader(&mut self, name: &str) {
         let preset_content = match name {
             "default" => DEFAULT_FRAGMENT,
-            "psychedelic" => {
-                include_str!("../assets/shards/psychedelic.frag")
-            }
+            "psychedelic" => include_str!("../assets/shards/psychedelic.frag"),
             "tunnel" => include_str!("../assets/shards/tunnel.frag"),
             "raymarch" => include_str!("../assets/shards/raymarch.frag"),
             "fractal" => include_str!("../assets/shards/fractal.frag"),
             _ => {
-                self.toast_mgr
-                    .show_error(&format!("Unknown preset: {}", name));
+                self.notification_mgr.error(&format!("Unknown preset: {}", name));
                 return;
             }
         };
 
-        // Update the appropriate tab directly
-        match self.current_buffer {
-            BufferKind::MainImage => {
-                self.main_image_tab.set_fragment(preset_content.to_string());
-                self.main_image_tab.set_vertex(DEFAULT_VERTEX.to_string());
-            }
-            BufferKind::BufferA => {
-                self.buffer_a_tab.set_fragment(preset_content.to_string());
-                self.buffer_a_tab.set_vertex(DEFAULT_VERTEX.to_string());
-            }
-            BufferKind::BufferB => {
-                self.buffer_b_tab.set_fragment(preset_content.to_string());
-                self.buffer_b_tab.set_vertex(DEFAULT_VERTEX.to_string());
-            }
-            BufferKind::BufferC => {
-                self.buffer_c_tab.set_fragment(preset_content.to_string());
-                self.buffer_c_tab.set_vertex(DEFAULT_VERTEX.to_string());
-            }
-            BufferKind::BufferD => {
-                self.buffer_d_tab.set_fragment(preset_content.to_string());
-                self.buffer_d_tab.set_vertex(DEFAULT_VERTEX.to_string());
-            }
+        if let Some(buffer) = self.buffers.get_mut(&self.current_buffer) {
+            buffer.set_fragment(preset_content.to_string());
+            buffer.set_vertex(DEFAULT_VERTEX.to_string());
         }
+
         self.apply_shader();
-        self.toast_mgr
-            .show_success(&format!("Loaded preset: {}", name));
+        self.notification_mgr.success(&format!("Loaded preset: {}", name));
         log::info!("Loaded preset shader: {}", name);
     }
 
     fn export_shard(&mut self) {
         use std::io::Write;
 
-        // Open save dialog
-        let file_path = match rfd::FileDialog::new()
+        // Default to .TMRS/shaders/ folder
+        let default_dir = std::env::current_dir()
+            .ok()
+            .map(|p| p.join(".TMRS/shaders"))
+            .filter(|p| p.exists());
+
+        let mut dialog = rfd::FileDialog::new()
             .add_filter("WGSLS Shader", &["wgsls"])
-            .set_file_name("output.wgsls")
-            .save_file()
-        {
+            .set_file_name("shader.wgsls");
+
+        if let Some(dir) = default_dir {
+            dialog = dialog.set_directory(dir);
+        }
+
+        let file_path = match dialog.save_file() {
             Some(path) => path,
-            None => return, // User cancelled
+            None => return,
         };
 
-        // Build readable text format
         let mut content = String::new();
-        
-        // Header
-        content.push_str("// WebShard Shader Export\n");
-        content.push_str(&format!(
-            "// Exported: {}\n",
-            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-        ));
-        content.push_str("// Format Version: 1.0\n");
-        content.push_str("//\n");
-        content.push_str(
-            "// Note: All buffers share the same vertex shader (defined once below).\n",
-        );
-        content.push_str("// Only fragment shaders differ per buffer.\n");
+
+        // Minimal header
+        content.push_str(&format!("// Exported: {}\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+
+        // Export boilerplate (structs and uniforms)
+        content.push_str("// BOILERPLATE\n");
+        content.push_str(SHADER_BOILERPLATE);
         content.push_str("\n");
-        
-        // Export shared vertex shader (only once)
-        content.push_str("// ========== SHARED VERTEX SHADER ==========\n");
-        let (vertex, _) = self.main_image_tab.get_shaders();
-        content.push_str(vertex);
-        if !vertex.ends_with('\n') {
-            content.push('\n');
-        }
-        content.push_str("// ========== END SHARED VERTEX SHADER ==========\n\n");
-        
-        // Export fragment shaders for each buffer
-        for buffer_type in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
-            let (_, fragment) = self.get_buffer_shaders(buffer_type);
-            let buffer_name = match buffer_type {
-                BufferKind::MainImage => "MAIN_IMAGE",
-                BufferKind::BufferA => "BUFFER_A",
-                BufferKind::BufferB => "BUFFER_B",
-                BufferKind::BufferC => "BUFFER_C",
-                BufferKind::BufferD => "BUFFER_D",
-            };
-            
-            // Fragment shader section only
-            content.push_str(&format!(
-                "// ========== {} FRAGMENT ==========\n",
-                buffer_name
-            ));
-            content.push_str(fragment);
-            if !fragment.ends_with('\n') {
+
+        // Export texture bindings (for multi-pass shaders)
+        content.push_str("// TEXTURE BINDINGS\n");
+        content.push_str(TEXTURE_BINDINGS);
+        content.push_str("\n");
+
+        // Export shared vertex shader
+        content.push_str("// VERTEX\n");
+        if let Some(buffer) = self.buffers.get(&BufferKind::MainImage) {
+            let (vertex, _) = buffer.get_shaders();
+            content.push_str(vertex);
+            if !vertex.ends_with('\n') {
                 content.push('\n');
             }
-            content.push_str(&format!(
-                "// ========== END {} FRAGMENT ==========\n\n",
-                buffer_name
-            ));
+        }
+        content.push('\n');
+
+        // Export all buffer fragments with unique function names
+        for kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
+            if let Some(buffer) = self.buffers.get(&kind) {
+                let (_, fragment) = buffer.get_shaders();
+                let trimmed = fragment.trim();
+
+                // Skip empty buffers
+                if trimmed.is_empty() || trimmed.starts_with("//") && trimmed.lines().count() == 1 {
+                    continue;
+                }
+
+                content.push_str(&format!("// {}\n", kind.as_str().to_uppercase()));
+
+                // Rename fs_main to unique names to avoid redefinition errors
+                let renamed_fragment = match kind {
+                    BufferKind::MainImage => fragment.replace("fn fs_main(", "fn fs_main_image("),
+                    BufferKind::BufferA => fragment.replace("fn fs_main(", "fn fs_buffer_a("),
+                    BufferKind::BufferB => fragment.replace("fn fs_main(", "fn fs_buffer_b("),
+                    BufferKind::BufferC => fragment.replace("fn fs_main(", "fn fs_buffer_c("),
+                    BufferKind::BufferD => fragment.replace("fn fs_main(", "fn fs_buffer_d("),
+                };
+
+                content.push_str(&renamed_fragment);
+                if !renamed_fragment.ends_with('\n') {
+                    content.push('\n');
+                }
+                content.push('\n');
+            }
         }
 
-        // Write to file
+        // Debug: Log exported content structure
+        log::debug!("=== EXPORT DEBUG ===");
+        log::debug!("Export length: {} bytes", content.len());
+        log::debug!("Export preview (first 500 chars):\n{}", &content.chars().take(500).collect::<String>());
+        log::debug!("===================");
+
         match std::fs::File::create(&file_path) {
             Ok(mut file) => {
-                if let Err(e) = file.write_all(content.as_bytes()) {
-                    self.toast_mgr.show_error(&format!(
-                        "Failed to write file: {}",
-                        e
-                    ));
-                    log::error!("Failed to write shard file: {}", e);
+                if file.write_all(content.as_bytes()).is_ok() {
+                    self.notification_mgr.success("✓ Shader exported!");
+                    log::info!("Shader exported to: {:?}", file_path);
                 } else {
-                    let filename = file_path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("output.wgsls");
-                    self.toast_mgr
-                        .show_success(&format!("Exported: {}", filename));
-                    log::info!("Exported shard to: {:?}", file_path);
+                    self.notification_mgr.error("Failed to write file");
+                    log::error!("Failed to write to: {:?}", file_path);
                 }
             }
             Err(e) => {
-                self.toast_mgr.show_error(&format!(
-                    "Failed to create file: {}",
-                    e
-                ));
-                log::error!("Failed to create shard file: {}", e);
+                self.notification_mgr.error(&format!("Export failed: {}", e));
+                log::error!("Failed to create file: {:?}, error: {}", file_path, e);
             }
         }
     }

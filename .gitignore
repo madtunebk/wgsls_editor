@@ -33,3 +33,15 @@ CLAUDE.md
 AGENTS.md
 Pasted image.png
 *.cursorrules
+# Agent-generated documentation
+MULTI_PASS_DEMO.md
+DEMO_QUICKSTART.md
+SAMPLER_FIX.md
+SUMMARY.md
+ARCHITECTURE.md
+REFACTORING_SUMMARY.md
+CHANGELOG.md
+
+# TempRS integration
+TempRS/                  # TempRS repo (separate git)
+.TMRS/                   # Shared shader files

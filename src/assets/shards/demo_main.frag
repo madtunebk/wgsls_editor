@@ -1,6 +1,6 @@
-// Default Multi-Pass Demo - MainImage
-// Combines all buffers with audio-reactive color swapping
-// Load Buffer A-D shaders first, then compile!
+// MainImage - Combines all buffers with audio-reactive color swapping
+// Samples from Buffer A (red), B (blue), C (green), and D (vignette)
+// Uses bass, mid, high to swap color channels
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
@@ -23,22 +23,29 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     let high = uniforms.audio_high;
 
     // Audio-reactive color swapping
-    // Bass boosts red, Mid boosts green, High boosts blue
+    // High bass: emphasize red
+    // High mid: emphasize green
+    // High high: emphasize blue
+
+    var final_color: vec3<f32>;
+
+    // Simple color mixing based on audio
+    // When bass is high, boost red and reduce others
     let r = red * (1.0 + bass * 0.8) + green * (1.0 - bass) * 0.3;
     let g = green * (1.0 + mid * 0.8) + blue * (1.0 - mid) * 0.3;
     let b = blue * (1.0 + high * 0.8) + red * (1.0 - high) * 0.3;
 
-    var final_color = vec3<f32>(r, g, b);
+    final_color = vec3<f32>(r, g, b);
 
     // Apply vignette from Buffer D
-    let vignette = buffer_d.r;
+    let vignette = buffer_d.r; // Use red channel as vignette mask
     final_color = final_color * vignette;
 
-    // Apply gamma correction from Buffer D
+    // Apply gamma from Buffer D alpha channel
     let gamma = buffer_d.a;
     final_color = pow(final_color, vec3<f32>(1.0 / gamma));
 
-    // Clamp to valid range
+    // Normalize to prevent oversaturation
     final_color = clamp(final_color, vec3<f32>(0.0), vec3<f32>(1.0));
 
     return vec4<f32>(final_color, 1.0);
