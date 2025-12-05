@@ -344,7 +344,7 @@ impl TopApp {
         ui.spacing_mut().window_margin = egui::Margin::ZERO;
 
         ui.vertical(|ui| {
-            // A: Top bar - Buffer dropdown + Fragment/Vertex tabs + Preset button
+            // A: Top bar - Buffer dropdown + Vertex tab only
             ui.horizontal(|ui| {
                 ui.style_mut().visuals.widgets.inactive.weak_bg_fill =
                     egui::Color32::from_rgb(30, 30, 35);
@@ -355,8 +355,8 @@ impl TopApp {
 
                 let tab_h = 36.0;
                 
-                // Buffer dropdown (left side, ~160px)
-                let dropdown_width = 160.0;
+                // Buffer dropdown (left side, takes remaining space)
+                let dropdown_width = ui.available_width() - 120.0; // Reserve for Vertex tab
                 egui::ComboBox::from_id_salt("buffer_selector")
                     .selected_text(format!("🎬 {}", self.current_buffer.as_str()))
                     .width(dropdown_width - 20.0)
@@ -368,35 +368,14 @@ impl TopApp {
                             }
                         }
                     });
-                
-                // Fragment/Vertex tabs (middle, split remaining space)
-                let remaining_width = ui.available_width() - 100.0; // Reserve space for preset button
-                let tab_w = remaining_width / 2.0;
 
-                // Fragment tab
-                let frag_text = egui::RichText::new("Fragment").size(14.0);
-                if ui
-                    .add_sized([tab_w, tab_h], egui::Button::new(frag_text).selected(self.active_tab == 0))
-                    .clicked()
-                {
-                    self.active_tab = 0;
-                }
-
-                // Vertex tab
+                // Vertex tab (right side, only show when active_tab == 1)
                 let vert_text = egui::RichText::new("Vertex").size(14.0);
                 if ui
-                    .add_sized([tab_w, tab_h], egui::Button::new(vert_text).selected(self.active_tab == 1))
+                    .add_sized([120.0, tab_h], egui::Button::new(vert_text).selected(self.active_tab == 1))
                     .clicked()
                 {
                     self.active_tab = 1;
-                }
-                
-                // Preset button (right side)
-                if ui.button(egui::RichText::new("📁 Presets").size(13.0))
-                    .on_hover_text("Load shader presets")
-                    .clicked()
-                {
-                    self.show_preset_menu = !self.show_preset_menu;
                 }
             });
 
@@ -432,7 +411,25 @@ impl TopApp {
                     let gear_rect = egui::Rect::from_min_size(gear_pos, egui::vec2(gear_size, gear_size));
 
                     let is_hovered = editor_rect.contains(ctx.pointer_hover_pos().unwrap_or_default());
-                    if is_hovered || self.show_settings {
+                    if is_hovered || self.show_settings || self.show_preset_menu {
+                        // Presets button (above settings gear)
+                        let preset_pos = egui::pos2(
+                            editor_rect.right() - gear_size - 8.0,
+                            editor_rect.top() + gear_size + 16.0
+                        );
+                        let preset_rect = egui::Rect::from_min_size(preset_pos, egui::vec2(gear_size, gear_size));
+                        
+                        let preset_response = ui.put(
+                            preset_rect,
+                            egui::Button::new(egui::RichText::new("📁").size(16.0))
+                                .frame(true)
+                        );
+
+                        if preset_response.on_hover_text("Load Shader Presets").clicked() {
+                            self.show_preset_menu = !self.show_preset_menu;
+                        }
+                        
+                        // Settings gear button
                         let gear_response = ui.put(
                             gear_rect,
                             egui::Button::new(egui::RichText::new("⚙").size(16.0))
@@ -651,6 +648,9 @@ impl TopApp {
         self.vertex = vertex;
         self.fragment = fragment;
         self.current_buffer = new_buffer;
+        
+        // Switch to fragment tab when changing buffers
+        self.active_tab = 0;
 
         log::info!("Switched to buffer: {}", new_buffer.as_str());
         self.toast_mgr.show_info(&format!("Switched to {}", new_buffer.as_str()));
