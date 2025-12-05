@@ -200,58 +200,65 @@ impl MultiPassPipelines {
 
         // ===== BUFFER A: offscreen pass (optional) =====
         let buffer_a = if let Some(buffer_a_src) = sources.get(&BufferKind::BufferA) {
-            if !buffer_a_src.trim().is_empty() {
+            // Only create if it has actual shader code (not just comments)
+            let has_code = buffer_a_src.contains("fn fs_main") || buffer_a_src.contains("@fragment");
+            if !buffer_a_src.trim().is_empty() && has_code {
                 log::debug!("Creating BufferA pass");
-                validate_shader(buffer_a_src)?;
-
-                let buffer_a_module = device.create_shader_module(eframe::wgpu::ShaderModuleDescriptor {
-                    label: Some("buffer_a_shader"),
-                    source: eframe::wgpu::ShaderSource::Wgsl(buffer_a_src.clone().into()),
-                });
-
-                let (buffer_a_tex, buffer_a_view) =
-                    create_color_target(device, screen_size, format, "buffer_a_target");
-
-                let buffer_a_pipeline_layout =
-                    device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
-                        label: Some("buffer_a_pipeline_layout"),
-                        bind_group_layouts: &[&uniform_bgl],
-                        push_constant_ranges: &[],
+                
+                // Try to validate, but skip if it fails (allow partial shaders during development)
+                if let Err(e) = validate_shader(buffer_a_src) {
+                    log::warn!("BufferA validation failed, skipping: {}", e);
+                    None
+                } else {
+                    let buffer_a_module = device.create_shader_module(eframe::wgpu::ShaderModuleDescriptor {
+                        label: Some("buffer_a_shader"),
+                        source: eframe::wgpu::ShaderSource::Wgsl(buffer_a_src.clone().into()),
                     });
 
-                let buffer_a_pipeline =
-                    device.create_render_pipeline(&eframe::wgpu::RenderPipelineDescriptor {
-                        label: Some("buffer_a_pipeline"),
-                        layout: Some(&buffer_a_pipeline_layout),
-                        vertex: eframe::wgpu::VertexState {
-                            module: &buffer_a_module,
-                            entry_point: Some("vs_main"),
-                            compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
-                            buffers: &[],
-                        },
-                        fragment: Some(eframe::wgpu::FragmentState {
-                            module: &buffer_a_module,
-                            entry_point: Some("fs_main"),
-                            compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
-                            targets: &[Some(eframe::wgpu::ColorTargetState {
-                                format,
-                                blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
-                                write_mask: eframe::wgpu::ColorWrites::ALL,
-                            })],
-                        }),
-                        primitive: eframe::wgpu::PrimitiveState::default(),
-                        depth_stencil: None,
-                        multisample: eframe::wgpu::MultisampleState::default(),
-                        multiview: None,
-                        cache: None,
-                    });
+                    let (buffer_a_tex, buffer_a_view) =
+                        create_color_target(device, screen_size, format, "buffer_a_target");
 
-                Some(BufferPass {
-                    kind: BufferKind::BufferA,
-                    pipeline: buffer_a_pipeline,
-                    target_texture: buffer_a_tex,
-                    target_view: buffer_a_view,
-                })
+                    let buffer_a_pipeline_layout =
+                        device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
+                            label: Some("buffer_a_pipeline_layout"),
+                            bind_group_layouts: &[&uniform_bgl],
+                            push_constant_ranges: &[],
+                        });
+
+                    let buffer_a_pipeline =
+                        device.create_render_pipeline(&eframe::wgpu::RenderPipelineDescriptor {
+                            label: Some("buffer_a_pipeline"),
+                            layout: Some(&buffer_a_pipeline_layout),
+                            vertex: eframe::wgpu::VertexState {
+                                module: &buffer_a_module,
+                                entry_point: Some("vs_main"),
+                                compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                buffers: &[],
+                            },
+                            fragment: Some(eframe::wgpu::FragmentState {
+                                module: &buffer_a_module,
+                                entry_point: Some("fs_main"),
+                                compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
+                                targets: &[Some(eframe::wgpu::ColorTargetState {
+                                    format,
+                                    blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                    write_mask: eframe::wgpu::ColorWrites::ALL,
+                                })],
+                            }),
+                            primitive: eframe::wgpu::PrimitiveState::default(),
+                            depth_stencil: None,
+                            multisample: eframe::wgpu::MultisampleState::default(),
+                            multiview: None,
+                            cache: None,
+                        });
+
+                    Some(BufferPass {
+                        kind: BufferKind::BufferA,
+                        pipeline: buffer_a_pipeline,
+                        target_texture: buffer_a_tex,
+                        target_view: buffer_a_view,
+                    })
+                }
             } else {
                 None
             }
