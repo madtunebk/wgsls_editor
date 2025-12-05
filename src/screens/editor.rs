@@ -703,7 +703,7 @@ impl TopApp {
                 self.save_shader_state();
             }
             // Ctrl/Cmd + Z - Restore saved state
-            if i.modifiers.command && i.key_pressed(egui::Key::Z) {
+            if i.modifiers.command && i.key_pressed(egui::Key::R) {
                 self.restore_shader_state();
             }
             // Ctrl/Cmd + E - Export shard
@@ -747,7 +747,7 @@ impl TopApp {
         // Clone current shaders to saved state
         self.saved_shaders = Some(self.buffer_shaders.clone());
         self.toast_mgr.show_success("✓ Shader state saved!");
-        log::info!("Shader state saved (Ctrl+Z to restore)");
+        log::info!("Shader state saved (Ctrl+R to restore)");
     }
 
     fn restore_shader_state(&mut self) {

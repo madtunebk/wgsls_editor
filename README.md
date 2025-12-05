@@ -15,7 +15,7 @@ A modern WGSL shader editor built with Rust and egui, featuring real-time shader
 - 💾 **State Management** - Save/restore shader checkpoints for safe experimentation
 - 🎯 **Dual Editor** - Separate vertex and fragment shader editing
 - 🛠️ **Error Handling** - Detailed shader compilation error reporting with line numbers
-- ⌨️ **Keyboard Shortcuts** - Efficient workflow with Ctrl+E export, Ctrl+S save, Ctrl+Z restore
+- ⌨️ **Keyboard Shortcuts** - Efficient workflow with Ctrl+E export, Ctrl+S save, Ctrl+R restore
 - 🎭 **Custom Themes** - Dark theme optimized for shader development
 - 📝 **Toast Notifications** - User-friendly status messages
 
@@ -117,7 +117,7 @@ cargo clippy --all-targets -- -D warnings
 1. **Switch Buffers**: Toggle between MainImage, BufferA-D, and Vertex shader tabs
 2. **Live Preview**: Shaders compile and render in real-time
 3. **Save State**: Press `Ctrl+S` to save current shader state before experimenting
-4. **Restore State**: Press `Ctrl+Z` to revert to last saved checkpoint
+4. **Restore State**: Press `Ctrl+R` to revert to last saved checkpoint
 5. **Export**: Press `Ctrl+E` to export shader to file
 6. **Error Messages**: Compilation errors appear with line numbers and descriptions
 
@@ -142,7 +142,7 @@ See `src/assets/shards/demo_buffers.frag` for a working example.
 - `Ctrl+Enter` - Apply shader changes (compile and update)
 - `Ctrl+E` - Export shader to file
 - `Ctrl+S` - Save shader state (create checkpoint)
-- `Ctrl+Z` - Restore shader state (revert to last checkpoint)
+- `Ctrl+R` - Restore shader state (revert to last checkpoint)
 - `Ctrl+,` - Open settings
 - `Ctrl++` / `Ctrl+-` - Increase/decrease editor font size
 - Tab switching for buffer editing (MainImage, BufferA-D, Vertex)
