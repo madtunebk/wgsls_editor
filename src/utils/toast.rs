@@ -112,32 +112,40 @@ impl ToastManager {
         if self.toasts.is_empty() {
             return;
         }
-        let screen_rect = ui.ctx().content_rect();
-        let mut last_rect: Option<Rect> = None;
-        let spacing = 12.0;
+        let screen_rect = ui.ctx().viewport_rect();
+        let spacing = 8.0;
+        let margin = 20.0;
+        
+        // Start from bottom-right corner
+        let mut y_offset = screen_rect.max.y - margin;
+        
         for toast in &mut self.toasts {
             // Size presets
             let base_w = match toast.toast_type {
-                ToastType::Error => 900.0,  // Wider for error messages
-                _ => 520.0,
+                ToastType::Error => 700.0,
+                _ => 280.0,  // Smaller for success/info toasts
             };
             
-            // Calculate height based on message length for errors
             let base_h = match toast.toast_type {
                 ToastType::Error => {
                     let line_count = toast.message.lines().count().max(1);
                     let min_h = 200.0;
                     let max_h = 600.0;
-                    let calculated_h = (line_count as f32 * 20.0 + 80.0).clamp(min_h, max_h);
-                    calculated_h
+                    (line_count as f32 * 20.0 + 80.0).clamp(min_h, max_h)
                 }
-                _ => 80.0,
+                _ => 50.0,  // Compact for success/info
             };
-            let mut rect = Rect::from_center_size(screen_rect.center(), Vec2::new(base_w, base_h));
-            if let Some(prev) = last_rect {
-                rect = rect.translate(Vec2::new(0.0, prev.height() / 2.0 + base_h / 2.0 + spacing));
-            }
-            last_rect = Some(rect);
+            
+            // Position from bottom-right
+            let x_pos = screen_rect.max.x - base_w - margin;
+            y_offset -= base_h;
+            
+            let rect = Rect::from_min_size(
+                egui::pos2(x_pos, y_offset),
+                Vec2::new(base_w, base_h)
+            );
+            
+            y_offset -= spacing;  // Space for next toast
 
             // Theme-aware colors
             let visuals = ui.style().visuals.clone();
@@ -179,45 +187,52 @@ impl ToastManager {
                 egui::StrokeKind::Outside,
             );
 
-            // Use layout to render long, multi-line messages (monospace for errors) with a close button and scrollable body
-            let inner = rect.shrink2(Vec2::new(16.0, 12.0));
+            // Use layout to render messages
+            let inner = rect.shrink2(Vec2::new(12.0, 8.0));
             let mut ui_in = ui.new_child(
                 egui::UiBuilder::new()
                     .max_rect(inner)
                     .layout(egui::Layout::top_down(egui::Align::Min)),
             );
-            ui_in.vertical(|ui_col| {
-                ui_col.horizontal(|ui_row| {
-                    let title = match toast.toast_type {
-                        ToastType::Error => "⚠ WGSL Compilation Error",
-                        ToastType::Success => "✓ Success",
-                        ToastType::Info => "ℹ Info",
-                    };
-                    ui_row.strong(title);
-                    ui_row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui_r| {
-                        if ui_r.button("✕").clicked() {
-                            toast.dismissed = true;
-                        }
+            
+            match toast.toast_type {
+                ToastType::Error => {
+                    // Full error display with close button and scroll
+                    ui_in.vertical(|ui_col| {
+                        ui_col.horizontal(|ui_row| {
+                            ui_row.strong("⚠ WGSL Compilation Error");
+                            ui_row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui_r| {
+                                if ui_r.button("✕").clicked() {
+                                    toast.dismissed = true;
+                                }
+                            });
+                        });
+                        ui_col.add_space(4.0);
+                        
+                        let text = egui::RichText::new(&toast.message)
+                            .family(egui::FontFamily::Monospace)
+                            .color(Color32::from_rgb(255, 180, 180))
+                            .size(13.0);
+                        let max_h = (inner.height() - 40.0).max(100.0);
+                        egui::ScrollArea::vertical()
+                            .id_salt(format!("toast_scroll_{:?}", toast.created_at))
+                            .max_height(max_h)
+                            .auto_shrink([false, false])
+                            .show(ui_col, |ui_body| {
+                                ui_body.add(egui::Label::new(text).wrap().selectable(true));
+                            });
                     });
-                });
-                ui_col.add_space(4.0);
-                
-                let mut text = egui::RichText::new(&toast.message);
-                if let ToastType::Error = toast.toast_type {
-                    text = text
-                        .family(egui::FontFamily::Monospace)
-                        .color(Color32::from_rgb(255, 180, 180))
-                        .size(13.0);
                 }
-                let max_h = (inner.height() - 40.0).max(100.0);
-                egui::ScrollArea::vertical()
-                    .id_salt(format!("toast_scroll_{:?}", toast.created_at))  // Unique ID per toast
-                    .max_height(max_h)
-                    .auto_shrink([false, false])
-                    .show(ui_col, |ui_body| {
-                        ui_body.add(egui::Label::new(text).wrap().selectable(true));
+                _ => {
+                    // Compact success/info display
+                    ui_in.centered_and_justified(|ui_center| {
+                        let text = egui::RichText::new(&toast.message)
+                            .size(14.0)
+                            .color(Color32::WHITE);
+                        ui_center.label(text);
                     });
-            });
+                }
+            }
         }
         ui.ctx().request_repaint();
     }
