@@ -1,8 +1,5 @@
-// Shared vertex output struct
-struct VSOut {
-    @builtin(position) pos: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
+// Default vertex shader - VSOut is now auto-injected!
+// You don't need to define VSOut anymore
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VSOut {
