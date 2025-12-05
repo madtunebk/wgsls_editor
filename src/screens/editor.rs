@@ -60,7 +60,6 @@ pub struct TopApp {
     buffer_d_tab: BufferDTab,
     
     saved_shaders: Option<std::collections::HashMap<BufferKind, (String, String)>>, // Saved state for Ctrl+S
-    active_tab: u8, // 0 = Fragment, 1 = Vertex
 
     // Multi-pass shader pipeline
     shader_shared: Arc<Mutex<Option<Arc<MultiPassPipelines>>>>,
@@ -129,7 +128,6 @@ impl TopApp {
             buffer_c_tab,
             buffer_d_tab,
             saved_shaders: None,
-            active_tab: 0,
 
             shader_shared: Arc::new(Mutex::new(None)),
             shader_needs_update: Arc::new(AtomicBool::new(false)),
@@ -415,31 +413,28 @@ impl TopApp {
 
                 let tab_h = 36.0;
                 
-                // Tabs: Fragment + buffer tabs (A–D) + Vertex
+                // Tabs: MainImage + Buffer A–D (vertex auto-injected, no separate vertex tab)
                 ui.horizontal(|ui| {
-                    let total_tabs = 6.0; // Fragment + 4 buffers (A–D) + Vertex
+                    let total_tabs = 5.0; // MainImage + 4 buffers (A–D)
                     let tab_width =
                         (ui.available_width() - (total_tabs - 1.0) * 4.0) / total_tabs;
                     
-                    // Fragment tab (represents Main Image)
-                    let fragment_selected =
-                        self.active_tab == 0 && self.current_buffer == BufferKind::MainImage;
-                    let fragment_button = egui::Button::new(
-                        egui::RichText::new("Fragment").size(12.0),
+                    // MainImage tab
+                    let main_selected = self.current_buffer == BufferKind::MainImage;
+                    let main_button = egui::Button::new(
+                        egui::RichText::new("MainImage").size(12.0),
                     )
-                    .selected(fragment_selected)
+                    .selected(main_selected)
                     .min_size(egui::vec2(tab_width, tab_h));
                     
-                    if ui.add(fragment_button).clicked() {
-                        self.active_tab = 0;
+                    if ui.add(main_button).clicked() {
                         self.switch_buffer(BufferKind::MainImage);
                     }
                     
                     ui.add_space(4.0);
                     
                     // Buffer A tab
-                    let is_buffer_a =
-                        self.current_buffer == BufferKind::BufferA && self.active_tab == 0;
+                    let is_buffer_a = self.current_buffer == BufferKind::BufferA;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -451,11 +446,12 @@ impl TopApp {
                     .clicked()
                     {
                         self.switch_buffer(BufferKind::BufferA);
-                    }                    ui.add_space(4.0);
+                    }
+                    
+                    ui.add_space(4.0);
                     
                     // Buffer B tab
-                    let is_buffer_b =
-                        self.current_buffer == BufferKind::BufferB && self.active_tab == 0;
+                    let is_buffer_b = self.current_buffer == BufferKind::BufferB;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -467,11 +463,12 @@ impl TopApp {
                     .clicked()
                     {
                         self.switch_buffer(BufferKind::BufferB);
-                    }                    ui.add_space(4.0);
+                    }
+                    
+                    ui.add_space(4.0);
                     
                     // Buffer C tab
-                    let is_buffer_c =
-                        self.current_buffer == BufferKind::BufferC && self.active_tab == 0;
+                    let is_buffer_c = self.current_buffer == BufferKind::BufferC;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -483,11 +480,12 @@ impl TopApp {
                     .clicked()
                     {
                         self.switch_buffer(BufferKind::BufferC);
-                    }                    ui.add_space(4.0);
+                    }
+                    
+                    ui.add_space(4.0);
                     
                     // Buffer D tab
-                    let is_buffer_d =
-                        self.current_buffer == BufferKind::BufferD && self.active_tab == 0;
+                    let is_buffer_d = self.current_buffer == BufferKind::BufferD;
                     if ui
                         .add_sized(
                             egui::vec2(tab_width, tab_h),
@@ -499,18 +497,6 @@ impl TopApp {
                     .clicked()
                     {
                         self.switch_buffer(BufferKind::BufferD);
-                    }                    ui.add_space(4.0);
-                    
-                    // Vertex tab
-                    let vertex_selected = self.active_tab == 1;
-                    let vertex_button = egui::Button::new(
-                        egui::RichText::new("Vertex").size(12.0),
-                    )
-                    .selected(vertex_selected)
-                    .min_size(egui::vec2(tab_width, tab_h));
-                    
-                    if ui.add(vertex_button).clicked() {
-                        self.active_tab = 1;
                     }
                 });
             });
@@ -660,15 +646,14 @@ impl TopApp {
 
     fn render_code_editor(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
         let buffer_key = self.current_buffer;
-        let is_fragment_tab = self.active_tab == 0;
         
-        // Delegate to the appropriate buffer-specific tab (tabs are the source of truth)
+        // Delegate to the appropriate buffer-specific tab (always show fragment - vertex is auto-injected)
         match buffer_key {
-            BufferKind::MainImage => self.main_image_tab.render(ui, is_fragment_tab),
-            BufferKind::BufferA => self.buffer_a_tab.render(ui, is_fragment_tab),
-            BufferKind::BufferB => self.buffer_b_tab.render(ui, is_fragment_tab),
-            BufferKind::BufferC => self.buffer_c_tab.render(ui, is_fragment_tab),
-            BufferKind::BufferD => self.buffer_d_tab.render(ui, is_fragment_tab),
+            BufferKind::MainImage => self.main_image_tab.render(ui, true),
+            BufferKind::BufferA => self.buffer_a_tab.render(ui, true),
+            BufferKind::BufferB => self.buffer_b_tab.render(ui, true),
+            BufferKind::BufferC => self.buffer_c_tab.render(ui, true),
+            BufferKind::BufferD => self.buffer_d_tab.render(ui, true),
         }
     }
 
