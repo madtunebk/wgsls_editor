@@ -654,19 +654,22 @@ impl TopApp {
         #[cfg(feature = "code_editor")]
         {
             let buffer_key = self.current_buffer;
+            let current_tab = self.active_tab;
+            
             if let Some((vertex_code, fragment_code)) =
                 self.buffer_shaders.get_mut(&buffer_key)
             {
                 // Set the minimum height to fill the available space
                 ui.set_min_height(ui.available_height());
                 
-                let (label, text) = if self.active_tab == 0 {
+                let (label, text) = if current_tab == 0 {
                     ("frag", fragment_code)
                 } else {
                     ("vert", vertex_code)
                 };
 
-                let editor_id = format!("{}_editor_{:?}", label, buffer_key);
+                // Unique ID combining buffer, tab, and type to prevent state reuse
+                let editor_id = format!("editor_{}_{:?}_{}", label, buffer_key, current_tab);
 
                 // CodeEditor with unique ID - no wrapper needed
                 egui_code_editor::CodeEditor::default()
@@ -684,17 +687,20 @@ impl TopApp {
         #[cfg(not(feature = "code_editor"))]
         {
             let buffer_key = self.current_buffer;
+            let current_tab = self.active_tab;
+            
             if let Some((vertex_code, fragment_code)) =
                 self.buffer_shaders.get_mut(&buffer_key)
             {
-                let (label, text) = if self.active_tab == 0 {
+                let (label, text) = if current_tab == 0 {
                     ("frag", fragment_code)
                 } else {
                     ("vert", vertex_code)
                 };
 
+                // Unique ID combining buffer, tab, and type to prevent state reuse
                 let editor_id =
-                    egui::Id::new(format!("{}_editor_{:?}", label, buffer_key));
+                    egui::Id::new(format!("editor_{}_{:?}_{}", label, buffer_key, current_tab));
                 
                 ui.add(
                     egui::TextEdit::multiline(text)
