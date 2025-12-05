@@ -10,8 +10,8 @@ use crate::utils::{
 use crate::utils::wgsl_syntax;
 
 // Default shaders
-const DEFAULT_VERTEX: &str = include_str!("../assets/shards/test.vert");
-const DEFAULT_FRAGMENT: &str = include_str!("../assets/shards/test.frag");
+const DEFAULT_VERTEX: &str = include_str!("../assets/shards/default.vert");
+const DEFAULT_FRAGMENT: &str = include_str!("../assets/shards/default.frag");
 
 pub struct TopApp {
     // Shader code
@@ -206,7 +206,7 @@ impl eframe::App for TopApp {
         if self.show_error_window {
             egui::Window::new("Shader Error")
                 .collapsible(false)
-                .resizable(true)
+                .resizable(false)
                 .default_width(600.0)
                 .default_height(450.0)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
