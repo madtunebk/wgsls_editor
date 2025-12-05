@@ -26,6 +26,47 @@ pub struct ShaderPipeline {
 }
 
 impl ShaderPipeline {
+    /// Validate that the Uniforms struct in the shader matches our expected structure
+    fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), String> {
+        // Expected fields in exact order
+        let expected_fields = [
+            "time: f32",
+            "audio_bass: f32",
+            "audio_mid: f32", 
+            "audio_high: f32",
+            "resolution: vec2<f32>",
+            "_pad0: vec2<f32>",
+        ];
+        
+        // Check if shader defines a Uniforms struct
+        if !wgsl_src.contains("struct Uniforms") {
+            return Err("Shader must define a 'struct Uniforms' matching the pipeline structure.\n\nExpected:\nstruct Uniforms {\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}".to_string());
+        }
+        
+        // Extract struct definition
+        if let Some(start) = wgsl_src.find("struct Uniforms") {
+            if let Some(struct_content) = wgsl_src[start..].find('{') {
+                let start_brace = start + struct_content;
+                if let Some(end_brace) = wgsl_src[start_brace..].find('}') {
+                    let struct_body = &wgsl_src[start_brace + 1..start_brace + end_brace];
+                    
+                    // Check each expected field
+                    for field in &expected_fields {
+                        let field_name = field.split(':').next().unwrap().trim();
+                        if !struct_body.contains(field) {
+                            return Err(format!(
+                                "Uniforms struct mismatch!\n\nMissing or incorrect field: {}\n\nExpected struct (32 bytes total):\nstruct Uniforms {{\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}}\n\nYour struct is missing or has wrong type for: {}",
+                                field, field_name
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
     pub fn new(
         device: &Device,
         format: egui_wgpu::wgpu::TextureFormat,
@@ -38,6 +79,11 @@ impl ShaderPipeline {
             return Err(ShaderError::ValidationError(
                 "Shader source is empty".to_string(),
             ));
+        }
+
+        // Validate Uniforms struct BEFORE any other validation
+        if let Err(err_msg) = Self::validate_uniforms_struct(wgsl_src) {
+            return Err(ShaderError::ValidationError(err_msg));
         }
 
         // Basic WGSL validation - check for common syntax requirements

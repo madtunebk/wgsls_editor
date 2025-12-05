@@ -1,15 +1,16 @@
 // Demo: Multi-Buffer Shader
 // This demonstrates Fragment (MainImage), Buffer A, and Vertex coordination
 
-// UNIFORMS STRUCTURE (Required for all shaders)
+// UNIFORMS STRUCTURE (REQUIRED - DO NOT MODIFY)
 // Must match ShaderUniforms in pipeline.rs (32 bytes total)
+// The editor will validate this structure before compilation
 struct Uniforms {
-    time: f32,
-    audio_bass: f32,
-    audio_mid: f32,
-    audio_high: f32,
-    resolution: vec2<f32>,
-    _pad0: vec2<f32>,  // Padding for alignment
+    time: f32,           // Elapsed time in seconds
+    audio_bass: f32,     // Bass frequency energy (0.0-1.0)
+    audio_mid: f32,      // Mid frequency energy (0.0-1.0)
+    audio_high: f32,     // High frequency energy (0.0-1.0)
+    resolution: vec2<f32>, // Screen resolution in pixels
+    _pad0: vec2<f32>,    // Padding for alignment (required)
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
