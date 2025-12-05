@@ -8,7 +8,6 @@ pub struct MainImageTab {
     pub fragment_code: String,
     pub vertex_code: String,
     editor_font_size: f32,
-    active_shader: u8, // 0 = Fragment, 1 = Vertex
 }
 
 impl MainImageTab {
@@ -17,7 +16,6 @@ impl MainImageTab {
             fragment_code: fragment,
             vertex_code: vertex,
             editor_font_size: font_size,
-            active_shader: 0,
         }
     }
 
@@ -61,6 +59,10 @@ impl MainImageTab {
 
     pub fn set_font_size(&mut self, size: f32) {
         self.editor_font_size = size;
+    }
+
+    pub fn get_font_size(&self) -> f32 {
+        self.editor_font_size
     }
 
     pub fn get_shaders(&self) -> (&str, &str) {

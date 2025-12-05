@@ -16,7 +16,6 @@ pub use errors::{format_shader_error, ShaderError};
 pub use fonts::register_error_fonts;
 pub use monitors::detect_primary_monitor_xrandr;
 pub use multi_buffer_pipeline::{BufferKind, MultiPassCallback, MultiPassPipelines};
-pub use pipeline::{ShaderCallback, ShaderPipeline};
 pub use shader_validator::validate_shader;
 pub use theme::apply_editor_theme;
 pub use toast::ToastManager;

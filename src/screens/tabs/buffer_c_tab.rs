@@ -61,6 +61,10 @@ impl BufferCTab {
         self.editor_font_size = size;
     }
 
+    pub fn get_font_size(&self) -> f32 {
+        self.editor_font_size
+    }
+
     pub fn get_shaders(&self) -> (&str, &str) {
         (&self.vertex_code, &self.fragment_code)
     }

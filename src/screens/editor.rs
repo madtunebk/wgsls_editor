@@ -154,6 +154,9 @@ impl TopApp {
 
         // Audio will be loaded via the file picker in settings
 
+        // Load default shader into MainImage on startup
+        app.load_preset_shader("default");
+
         // Compile initial shader
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             let device = render_state.device.clone();
@@ -201,7 +204,7 @@ impl eframe::App for TopApp {
                 let format = render_state.target_format;
                 
                 // Build sources map for all buffers with auto-injected boilerplate
-                let mut sources = std::collections::HashMap::new();
+                let mut sources = std::collections::HashMap::with_capacity(5);
                 let mut validation_error: Option<ShaderError> = None;
                 
                 for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
@@ -218,9 +221,8 @@ impl eframe::App for TopApp {
                     
                     if fragment_trimmed.is_empty() || !has_code {
                         if buffer_kind == BufferKind::MainImage {
-                            // MainImage must exist, use default
-                            let combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
-                            sources.insert(buffer_kind, combined);
+                            // MainImage must exist, use default - pre-computed constant
+                            sources.insert(buffer_kind, format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT));
                         }
                         continue;
                     }
@@ -233,8 +235,15 @@ impl eframe::App for TopApp {
                         vertex_trimmed
                     };
                     
-                    // Build complete shader: boilerplate + vertex + fragment
-                    let complete_shader = format!("{}\n{}\n{}", SHADER_BOILERPLATE, user_vertex, fragment_trimmed);
+                    // Build complete shader: boilerplate + vertex + fragment (single allocation)
+                    let mut complete_shader = String::with_capacity(
+                        SHADER_BOILERPLATE.len() + user_vertex.len() + fragment_trimmed.len() + 4
+                    );
+                    complete_shader.push_str(SHADER_BOILERPLATE);
+                    complete_shader.push('\n');
+                    complete_shader.push_str(user_vertex);
+                    complete_shader.push('\n');
+                    complete_shader.push_str(fragment_trimmed);
                     
                     // Validate the complete shader
                     if let Err(e) = validate_shader(&complete_shader) {
@@ -309,11 +318,16 @@ impl eframe::App for TopApp {
 
         // Floating overlays
         // Settings overlay (editor only)
+        let old_font_size = self.editor_font_size;
         settings_menu::settings_overlay(
             ctx,
             &mut self.show_settings,
             &mut self.editor_font_size,
         );
+        // Propagate font size changes from settings menu to all tabs
+        if (self.editor_font_size - old_font_size).abs() > 0.01 {
+            self.update_all_tab_font_sizes();
+        }
 
         // Shader Properties window (using component)
         if self.show_preset_menu {
@@ -675,9 +689,9 @@ impl TopApp {
         }
     }
 
-    // Helper: Get all buffer sources for compilation
+    // Helper: Get all buffer sources for compilation (optimized with pre-allocation)
     fn get_all_buffer_sources(&self) -> std::collections::HashMap<BufferKind, String> {
-        let mut sources = std::collections::HashMap::new();
+        let mut sources = std::collections::HashMap::with_capacity(5);
         for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
             let (vertex, fragment) = self.get_buffer_shaders(buffer_kind);
             let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
@@ -881,6 +895,16 @@ impl TopApp {
     }
 
     fn update_all_tab_font_sizes(&mut self) {
+        // Sync current tab's font size to TopApp field
+        self.editor_font_size = match self.current_buffer {
+            BufferKind::MainImage => self.main_image_tab.get_font_size(),
+            BufferKind::BufferA => self.buffer_a_tab.get_font_size(),
+            BufferKind::BufferB => self.buffer_b_tab.get_font_size(),
+            BufferKind::BufferC => self.buffer_c_tab.get_font_size(),
+            BufferKind::BufferD => self.buffer_d_tab.get_font_size(),
+        };
+        
+        // Propagate to all tabs
         self.main_image_tab.set_font_size(self.editor_font_size);
         self.buffer_a_tab.set_font_size(self.editor_font_size);
         self.buffer_b_tab.set_font_size(self.editor_font_size);
