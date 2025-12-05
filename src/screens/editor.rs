@@ -500,23 +500,30 @@ impl TopApp {
             // Get mutable reference to current buffer's shaders
             let buffer_key = self.current_buffer;
             if let Some((vertex_code, fragment_code)) = self.buffer_shaders.get_mut(&buffer_key) {
-                // Fragment shader editor (always visible)
-                ui.label(egui::RichText::new("Fragment Shader").strong().size(13.0));
-                ui.add_space(4.0);
+                // Fragment shader (collapsible, open by default)
+                let frag_header = egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(),
+                    egui::Id::new(format!("frag_header_{:?}", buffer_key)),
+                    true,
+                );
                 
-                // Use unique ID per buffer to maintain separate editor state
-                let frag_id = format!("frag_{:?}", buffer_key);
-                egui_code_editor::CodeEditor::default()
-                    .id_source(&frag_id)
-                    .with_fontsize(self.editor_font_size)
-                    .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
-                    .with_syntax(wgsl_syntax::wgsl())
-                    .with_numlines(true)
-                    .show(ui, fragment_code);
+                frag_header.show_header(ui, |ui| {
+                    ui.label(egui::RichText::new("📝 Fragment Shader").strong().size(13.0));
+                }).body(|ui| {
+                    ui.add_space(4.0);
+                    let frag_id = format!("frag_{:?}", buffer_key);
+                    egui_code_editor::CodeEditor::default()
+                        .id_source(&frag_id)
+                        .with_fontsize(self.editor_font_size)
+                        .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
+                        .with_syntax(wgsl_syntax::wgsl())
+                        .with_numlines(true)
+                        .show(ui, fragment_code);
+                });
                 
-                ui.add_space(10.0);
+                ui.add_space(6.0);
                 
-                // Vertex shader (collapsible)
+                // Vertex shader (collapsible, closed by default)
                 ui.collapsing(egui::RichText::new("⚡ Vertex Shader (Advanced)").strong().size(13.0), |ui| {
                     ui.add_space(4.0);
                     let vert_id = format!("vert_{:?}", buffer_key);
@@ -535,21 +542,30 @@ impl TopApp {
         {
             let buffer_key = self.current_buffer;
             if let Some((vertex_code, fragment_code)) = self.buffer_shaders.get_mut(&buffer_key) {
-                // Fallback: Fragment shader
-                ui.label("Fragment Shader:");
-                let frag_id = egui::Id::new(format!("frag_{:?}", buffer_key));
-                ui.add(
-                    egui::TextEdit::multiline(fragment_code)
-                        .id(frag_id)
-                        .font(egui::TextStyle::Monospace)
-                        .code_editor()
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(20),
+                // Fragment shader (collapsible, open by default)
+                let frag_header = egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(),
+                    egui::Id::new(format!("frag_header_{:?}", buffer_key)),
+                    true,
                 );
                 
-                ui.add_space(10.0);
+                frag_header.show_header(ui, |ui| {
+                    ui.label(egui::RichText::new("Fragment Shader").strong());
+                }).body(|ui| {
+                    let frag_id = egui::Id::new(format!("frag_{:?}", buffer_key));
+                    ui.add(
+                        egui::TextEdit::multiline(fragment_code)
+                            .id(frag_id)
+                            .font(egui::TextStyle::Monospace)
+                            .code_editor()
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(20),
+                    );
+                });
                 
-                // Vertex shader (collapsible)
+                ui.add_space(6.0);
+                
+                // Vertex shader (collapsible, closed by default)
                 ui.collapsing("Vertex Shader (Advanced)", |ui| {
                     let vert_id = egui::Id::new(format!("vert_{:?}", buffer_key));
                     ui.add(
