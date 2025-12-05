@@ -15,6 +15,7 @@ pub fn current_prefix(text: &str, caret_char: usize) -> String {
     chars[idx..caret_char.min(chars.len())].iter().collect()
 }
 
+#[allow(dead_code)]
 pub fn byte_index_from_char_index(s: &str, char_index: usize) -> usize {
     if char_index == 0 {
         return 0;
@@ -29,6 +30,7 @@ pub fn byte_index_from_char_index(s: &str, char_index: usize) -> usize {
     s.len()
 }
 
+#[allow(dead_code)]
 pub fn apply_completion(target: &mut String, caret_char: usize, word: &str) -> usize {
     let chars: Vec<char> = target.chars().collect();
     let mut start = caret_char.min(chars.len());

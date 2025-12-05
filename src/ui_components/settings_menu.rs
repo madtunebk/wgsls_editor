@@ -25,7 +25,7 @@ pub fn settings_overlay(
         .fixed_pos(egui::pos2(0.0, 0.0))
         .order(egui::Order::Background)
         .show(ctx, |ui| {
-            let screen_rect = ctx.screen_rect();
+            let screen_rect = ctx.viewport_rect();
             ui.painter().rect_filled(
                 screen_rect,
                 0.0,

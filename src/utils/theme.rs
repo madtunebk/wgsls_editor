@@ -1,6 +1,6 @@
 // theme.rs - Dark theme for WGSL Shader Editor
 use eframe::egui::{
-    self, Color32, Context, CornerRadius, FontFamily, FontId, Margin, Stroke, Visuals,
+    self, Color32, Context, CornerRadius, FontFamily, FontId, Margin, Visuals,
 };
 
 /// Apply dark theme optimized for code editor
@@ -32,6 +32,7 @@ pub fn apply_editor_theme(ctx: &Context) {
 }
 
 /// Apply dark theme optimized for shader viewer/preview
+#[allow(dead_code)]
 pub fn apply_viewer_theme(ctx: &Context) {
     let mut style = (*ctx.style()).clone();
     style.visuals = Visuals::dark();

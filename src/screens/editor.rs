@@ -196,7 +196,7 @@ impl eframe::App for TopApp {
             egui::Window::new("")
                 .title_bar(false)
                 .anchor(egui::Align2::RIGHT_BOTTOM, [-10.0, -10.0])
-                .frame(egui::Frame::none())
+                .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
                     self.toast_mgr.render(ui);
                 });
@@ -268,10 +268,7 @@ impl TopApp {
                 // Fragment tab
                 let frag_text = egui::RichText::new("Fragment").size(15.0).strong();
                 if ui
-                    .add_sized(
-                        [tab_w, tab_h],
-                        egui::SelectableLabel::new(self.active_tab == 0, frag_text),
-                    )
+                    .add_sized([tab_w, tab_h], egui::Button::new(frag_text).selected(self.active_tab == 0))
                     .clicked()
                 {
                     self.active_tab = 0;
@@ -280,10 +277,7 @@ impl TopApp {
                 // Vertex tab
                 let vert_text = egui::RichText::new("Vertex").size(15.0).strong();
                 if ui
-                    .add_sized(
-                        [tab_w, tab_h],
-                        egui::SelectableLabel::new(self.active_tab == 1, vert_text),
-                    )
+                    .add_sized([tab_w, tab_h], egui::Button::new(vert_text).selected(self.active_tab == 1))
                     .clicked()
                 {
                     self.active_tab = 1;

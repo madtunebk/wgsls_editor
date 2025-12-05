@@ -92,6 +92,7 @@ pub fn format_shader_error(error: &ShaderError) -> String {
 }
 
 /// Extract line information from error message (e.g., "line 42")
+#[allow(dead_code)]
 fn extract_line_info(msg: &str) -> Option<String> {
     // Look for patterns like "line 42" or "42:5"
     for word in msg.split_whitespace() {

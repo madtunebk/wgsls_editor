@@ -12,10 +12,12 @@ pub struct AudioState {
 }
 
 impl AudioState {
+    #[allow(dead_code)]
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
     }
 
+    #[allow(dead_code)]
     pub fn set_bands(&self, bass: f32, mid: f32, high: f32) {
         if let Ok(mut b) = self.bass.lock() {
             *b = bass.clamp(0.0, 1.0);
@@ -28,6 +30,7 @@ impl AudioState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_bands(&self) -> (f32, f32, f32) {
         let b = self.bass.lock().ok().map(|g| *g).unwrap_or(0.0);
         let m = self.mid.lock().ok().map(|g| *g).unwrap_or(0.0);
