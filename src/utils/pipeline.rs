@@ -102,6 +102,19 @@ impl ShaderPipeline {
             ));
         }
 
+        // Validate required entry points exist
+        if !wgsl_src.contains("fn vs_main") {
+            return Err(ShaderError::ValidationError(
+                "Shader missing vertex entry point 'fn vs_main'.\n\nRequired:\n@vertex\nfn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput".to_string(),
+            ));
+        }
+
+        if !wgsl_src.contains("fn fs_main") {
+            return Err(ShaderError::ValidationError(
+                "Shader missing fragment entry point 'fn fs_main'.\n\nRequired:\n@fragment\nfn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32>".to_string(),
+            ));
+        }
+
         // Validate WGSL syntax using naga BEFORE passing to wgpu
         log::debug!("Validating WGSL with naga parser");
         let module = match naga::front::wgsl::parse_str(wgsl_src) {
