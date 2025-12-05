@@ -18,3 +18,11 @@ Thumbs.db
 
 # Misc
 .env
+
+# Audio files (potentially copyrighted)
+*.mp3
+*.wav
+*.ogg
+*.flac
+src/assets/*.mp3
+src/assets/*.wav
