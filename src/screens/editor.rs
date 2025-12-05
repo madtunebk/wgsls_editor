@@ -168,15 +168,15 @@ impl eframe::App for TopApp {
                 let device = &render_state.device;
                 let format = render_state.target_format;
                 
-                // Get current buffer's shaders
+                // Always compile Main Image buffer for rendering (final output)
                 let (vertex_clean, fragment_clean) = self.buffer_shaders
-                    .get(&self.current_buffer)
+                    .get(&BufferType::MainImage)
                     .cloned()
                     .unwrap_or_else(|| (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string()));
                 
                 let combined = format!("{}\n\n{}", vertex_clean.trim(), fragment_clean.trim());
                 
-                log::debug!("[TopApp] Combined shader length: {} bytes", combined.len());
+                log::debug!("[TopApp] Compiling Main Image - shader length: {} bytes", combined.len());
 
                 match ShaderPipeline::new(device, format, &combined) {
                     Ok(pipeline) => {
@@ -644,11 +644,11 @@ impl TopApp {
 
     fn apply_shader(&mut self) {
         let (vertex_len, fragment_len) = self.buffer_shaders
-            .get(&self.current_buffer)
+            .get(&BufferType::MainImage)
             .map(|(v, f)| (v.len(), f.len()))
             .unwrap_or((0, 0));
         
-        log::info!("Apply shader requested (vertex: {} bytes, fragment: {} bytes)",
+        log::info!("Apply shader requested - compiling Main Image (vertex: {} bytes, fragment: {} bytes)",
             vertex_len, fragment_len);
         self.shader_needs_update.store(true, Ordering::Relaxed);
 
