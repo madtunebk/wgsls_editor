@@ -624,6 +624,9 @@ impl TopApp {
         {
             let buffer_key = self.current_buffer;
             if let Some((vertex_code, fragment_code)) = self.buffer_shaders.get_mut(&buffer_key) {
+                // Set minimum height to fill available space
+                ui.set_min_height(ui.available_height());
+                
                 if self.active_tab == 0 {
                     // Fragment shader editor
                     let frag_id = format!("frag_{:?}", buffer_key);
@@ -633,6 +636,7 @@ impl TopApp {
                         .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
                         .with_syntax(wgsl_syntax::wgsl())
                         .with_numlines(true)
+                        .vscroll(true)
                         .show(ui, fragment_code);
                 } else {
                     // Vertex shader editor
@@ -643,6 +647,7 @@ impl TopApp {
                         .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
                         .with_syntax(wgsl_syntax::wgsl())
                         .with_numlines(true)
+                        .vscroll(true)
                         .show(ui, vertex_code);
                 }
             }
