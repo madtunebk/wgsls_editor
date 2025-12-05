@@ -25,6 +25,63 @@ A modern WGSL shader editor built with Rust and egui, featuring real-time shader
 - WGPU-compatible graphics driver
 - Linux (primary development platform, should work on other platforms)
 
+## Critical Shader Requirements
+
+All WGSL shaders **must** conform to the following structure to work in WebShard Editor:
+
+### 1. Uniforms Structure (Required)
+The shader **must** define this exact 32-byte uniforms struct:
+
+```wgsl
+struct Uniforms {
+    time: f32,           // Elapsed time in seconds
+    audio_bass: f32,     // Bass frequency energy (0.0-1.0)
+    audio_mid: f32,      // Mid frequency energy (0.0-1.0)
+    audio_high: f32,     // High frequency energy (0.0-1.0)
+    resolution: vec2<f32>, // Screen resolution in pixels
+    _pad0: vec2<f32>,    // Padding for alignment (required)
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+```
+
+### 2. Entry Points (Required)
+Shaders **must** define these entry point functions:
+
+```wgsl
+// Vertex shader entry point
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> YourVertexOutput {
+    // Your vertex shader code
+}
+
+// Fragment shader entry point
+@fragment
+fn fs_main(@location(0) coords: vec2<f32>) -> @location(0) vec4<f32> {
+    // Your fragment shader code
+}
+```
+
+### 3. Vertex Output Structure
+A vertex output struct with these attributes (any field names allowed):
+
+```wgsl
+struct VSOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}
+```
+
+### Validation
+The editor validates all shaders before compilation:
+- ✅ Uniforms struct matches expected structure (32 bytes)
+- ✅ Entry points `vs_main` and `fs_main` exist
+- ✅ Required WGSL attributes present
+- ✅ WGSL syntax via naga parser
+- ❌ Shaders failing validation show detailed error messages
+
+See `src/assets/shards/demo_buffers.frag` for a complete working example.
+
 ## Building & Running
 
 ### Debug Build
