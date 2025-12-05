@@ -2,13 +2,14 @@
 // This demonstrates Fragment (MainImage), Buffer A, and Vertex coordination
 
 // UNIFORMS STRUCTURE (Required for all shaders)
+// Must match ShaderUniforms in pipeline.rs (32 bytes total)
 struct Uniforms {
     time: f32,
+    audio_bass: f32,
+    audio_mid: f32,
+    audio_high: f32,
     resolution: vec2<f32>,
-    mouse: vec2<f32>,
-    bass_energy: f32,
-    mid_energy: f32,
-    high_energy: f32,
+    _pad0: vec2<f32>,  // Padding for alignment
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -60,9 +61,9 @@ fn fs_buffer_a(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32> {
     let pattern = spiral * rings;
     
     // Audio reactive (if audio is available)
-    let bass = uniforms.bass_energy;
-    let mid = uniforms.mid_energy;
-    let high = uniforms.high_energy;
+    let bass = uniforms.audio_bass;
+    let mid = uniforms.audio_mid;
+    let high = uniforms.audio_high;
     
     let color = vec3<f32>(
         0.5 + 0.5 * pattern + bass * 0.3,
