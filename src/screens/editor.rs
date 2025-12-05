@@ -507,8 +507,10 @@ impl TopApp {
                 |ui| {
                     let editor_rect = ui.max_rect();
 
-                    // Code editor
+                    // Code editor with unique ID per tab/buffer combination
+                    let scroll_id = egui::Id::new(format!("editor_scroll_{}_{:?}", self.active_tab, self.current_buffer));
                     egui::ScrollArea::vertical()
+                        .id_salt(scroll_id)
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             self.render_code_editor(ui, ctx);
