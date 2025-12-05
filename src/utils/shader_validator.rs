@@ -19,6 +19,14 @@ const REQUIRED_TYPES: &[&str] = &["f32", "vec2", "vec4"];
 /// 3. WGSL syntax validation via naga
 /// 4. Shader logic validation
 pub fn validate_shader(wgsl_src: &str) -> Result<(), ShaderError> {
+    validate_shader_with_entry_point(wgsl_src, "fs_main")
+}
+
+/// Validates a WGSL shader with a specific fragment entry point
+/// 
+/// Used for multi-buffer rendering where each buffer may have different entry points
+/// (e.g., fs_main, fs_buffer_a, fs_buffer_b, etc.)
+pub fn validate_shader_with_entry_point(wgsl_src: &str, entry_point: &str) -> Result<(), ShaderError> {
     // 1. Check shader is not empty
     if wgsl_src.trim().is_empty() {
         return Err(ShaderError::ValidationError(
@@ -33,7 +41,7 @@ pub fn validate_shader(wgsl_src: &str) -> Result<(), ShaderError> {
     validate_wgsl_constructs(wgsl_src)?;
 
     // 4. Validate required attributes and entry points
-    validate_entry_points(wgsl_src)?;
+    validate_entry_points_with_fragment(wgsl_src, entry_point)?;
 
     // 5. Validate WGSL syntax with naga
     validate_wgsl_syntax(wgsl_src)?;
@@ -116,6 +124,11 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
 
 /// Validate required shader entry points and attributes
 fn validate_entry_points(wgsl_src: &str) -> Result<(), ShaderError> {
+    validate_entry_points_with_fragment(wgsl_src, "fs_main")
+}
+
+/// Validate required shader entry points with custom fragment entry point name
+fn validate_entry_points_with_fragment(wgsl_src: &str, fragment_entry: &str) -> Result<(), ShaderError> {
     // Check for @vertex and @fragment attributes (from REQUIRED_ATTRIBUTES)
     if !wgsl_src.contains("@vertex") {
         return Err(ShaderError::ValidationError(
@@ -137,9 +150,10 @@ fn validate_entry_points(wgsl_src: &str) -> Result<(), ShaderError> {
     }
 
     // Validate fragment entry point exists (flexible name check)
-    if !wgsl_src.contains("fn fs_main") {
+    let fragment_fn = format!("fn {}", fragment_entry);
+    if !wgsl_src.contains(&fragment_fn) {
         return Err(ShaderError::ValidationError(
-            "Shader missing fragment entry point 'fn fs_main'.\n\nRequired:\n@fragment\nfn fs_main(@location(0) coords: vec2<f32>) -> @location(0) vec4<f32>".to_string(),
+            format!("Shader missing fragment entry point '{}'.\n\nRequired:\n@fragment\nfn {}(@location(0) coords: vec2<f32>) -> @location(0) vec4<f32>", fragment_fn, fragment_entry)
         ));
     }
 
