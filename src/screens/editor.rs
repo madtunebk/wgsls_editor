@@ -209,7 +209,14 @@ impl eframe::App for TopApp {
                     let fragment_trimmed = fragment.trim();
                     
                     // Skip empty fragments (except MainImage which needs default)
-                    if fragment_trimmed.is_empty() || fragment_trimmed.starts_with("//") {
+                    // Check if there's actual code (not just comments)
+                    let has_code = fragment_trimmed.lines()
+                        .any(|line| {
+                            let trimmed_line = line.trim();
+                            !trimmed_line.is_empty() && !trimmed_line.starts_with("//")
+                        });
+                    
+                    if fragment_trimmed.is_empty() || !has_code {
                         if buffer_kind == BufferKind::MainImage {
                             // MainImage must exist, use default
                             let combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
