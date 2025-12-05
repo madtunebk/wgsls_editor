@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::utils::ShaderError;
+use crate::utils::{validate_shader, ShaderError};
 use eframe::epaint;
 use eframe::wgpu::{BindGroup, Buffer, Device, RenderPipeline};
 
@@ -26,47 +26,6 @@ pub struct ShaderPipeline {
 }
 
 impl ShaderPipeline {
-    /// Validate that the Uniforms struct in the shader matches our expected structure
-    fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), String> {
-        // Expected fields in exact order
-        let expected_fields = [
-            "time: f32",
-            "audio_bass: f32",
-            "audio_mid: f32", 
-            "audio_high: f32",
-            "resolution: vec2<f32>",
-            "_pad0: vec2<f32>",
-        ];
-        
-        // Check if shader defines a Uniforms struct
-        if !wgsl_src.contains("struct Uniforms") {
-            return Err("Shader must define a 'struct Uniforms' matching the pipeline structure.\n\nExpected:\nstruct Uniforms {\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}".to_string());
-        }
-        
-        // Extract struct definition
-        if let Some(start) = wgsl_src.find("struct Uniforms") {
-            if let Some(struct_content) = wgsl_src[start..].find('{') {
-                let start_brace = start + struct_content;
-                if let Some(end_brace) = wgsl_src[start_brace..].find('}') {
-                    let struct_body = &wgsl_src[start_brace + 1..start_brace + end_brace];
-                    
-                    // Check each expected field
-                    for field in &expected_fields {
-                        let field_name = field.split(':').next().unwrap().trim();
-                        if !struct_body.contains(field) {
-                            return Err(format!(
-                                "Uniforms struct mismatch!\n\nMissing or incorrect field: {}\n\nExpected struct (32 bytes total):\n\nstruct Uniforms {{\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}}\n\nYour struct is missing or has the wrong type for field: '{}'",
-                                field, field_name
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        
-        Ok(())
-    }
-
     pub fn new(
         device: &Device,
         format: egui_wgpu::wgpu::TextureFormat,
@@ -74,74 +33,11 @@ impl ShaderPipeline {
     ) -> Result<Self, ShaderError> {
         log::debug!("Creating shader pipeline ({} bytes)", wgsl_src.len());
 
-        // Validate shader source is not empty
-        if wgsl_src.trim().is_empty() {
-            return Err(ShaderError::ValidationError(
-                "Shader source is empty".to_string(),
-            ));
-        }
+        // Validate shader using the dedicated validator
+        // This checks: uniforms struct, entry points, WGSL syntax, and logic
+        validate_shader(wgsl_src)?;
 
-        // Validate Uniforms struct BEFORE any other validation
-        if let Err(err_msg) = Self::validate_uniforms_struct(wgsl_src) {
-            return Err(ShaderError::ValidationError(err_msg));
-        }
-
-        // Basic WGSL validation - check for common syntax requirements
-        let has_vertex = wgsl_src.contains("@vertex");
-        let has_fragment = wgsl_src.contains("@fragment");
-
-        if !has_vertex {
-            return Err(ShaderError::ValidationError(
-                "Shader missing @vertex function".to_string(),
-            ));
-        }
-
-        if !has_fragment {
-            return Err(ShaderError::ValidationError(
-                "Shader missing @fragment function".to_string(),
-            ));
-        }
-
-        // Validate required entry points exist
-        if !wgsl_src.contains("fn vs_main") {
-            return Err(ShaderError::ValidationError(
-                "Shader missing vertex entry point 'fn vs_main'.\n\nRequired:\n@vertex\nfn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput".to_string(),
-            ));
-        }
-
-        if !wgsl_src.contains("fn fs_main") {
-            return Err(ShaderError::ValidationError(
-                "Shader missing fragment entry point 'fn fs_main'.\n\nRequired:\n@fragment\nfn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32>".to_string(),
-            ));
-        }
-
-        // Validate WGSL syntax using naga BEFORE passing to wgpu
-        log::debug!("Validating WGSL with naga parser");
-        let module = match naga::front::wgsl::parse_str(wgsl_src) {
-            Ok(module) => {
-                log::debug!("Naga parse successful");
-                module
-            }
-            Err(parse_error) => {
-                let error_msg = format!("WGSL Parse Error:\n{}", parse_error.emit_to_string(wgsl_src));
-                log::error!("Shader parse failed: {}", error_msg);
-                return Err(ShaderError::ValidationError(error_msg));
-            }
-        };
-
-        // Validate the module
-        let mut validator = naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::all(),
-        );
-
-        if let Err(validation_error) = validator.validate(&module) {
-            let error_msg = format!("WGSL Validation Error:\n{}", validation_error.emit_to_string(wgsl_src));
-            log::error!("Shader validation failed: {}", error_msg);
-            return Err(ShaderError::ValidationError(error_msg));
-        }
-
-        log::debug!("Naga validation passed, creating WGPU shader module");
+        log::debug!("Shader validation passed, creating WGPU shader module");
 
         let shader = device.create_shader_module(egui_wgpu::wgpu::ShaderModuleDescriptor {
             label: Some("dynamic_shader"),
