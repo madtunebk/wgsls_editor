@@ -1,6 +1,23 @@
 // Demo: Multi-Buffer Shader
 // This demonstrates Fragment (MainImage), Buffer A, and Vertex coordination
 
+// UNIFORMS STRUCTURE (Required for all shaders)
+struct Uniforms {
+    time: f32,
+    resolution: vec2<f32>,
+    mouse: vec2<f32>,
+    bass_energy: f32,
+    mid_energy: f32,
+    high_energy: f32,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) tex_coords: vec2<f32>,
+}
+
 // MAIN_IMAGE FRAGMENT
 // This is the final output - displays Buffer A with effects
 @fragment
