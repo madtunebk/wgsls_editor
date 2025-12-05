@@ -97,24 +97,30 @@ fn validate_entry_points(wgsl_src: &str) -> Result<(), ShaderError> {
         ));
     }
 
-    // Validate vertex entry point
+    // Validate vertex entry point exists (flexible name check)
     if !wgsl_src.contains("fn vs_main") {
         return Err(ShaderError::ValidationError(
-            "Shader missing vertex entry point 'fn vs_main'.\n\nRequired:\n@vertex\nfn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput".to_string(),
+            "Shader missing vertex entry point 'fn vs_main'.\n\nRequired:\n@vertex\nfn vs_main(@builtin(vertex_index) vertex_index: u32) -> YourVertexOutput".to_string(),
         ));
     }
 
-    // Validate fragment entry point
+    // Validate fragment entry point exists (flexible name check)
     if !wgsl_src.contains("fn fs_main") {
         return Err(ShaderError::ValidationError(
-            "Shader missing fragment entry point 'fn fs_main'.\n\nRequired:\n@fragment\nfn fs_main(@location(0) tex_coords: vec2<f32>) -> @location(0) vec4<f32>".to_string(),
+            "Shader missing fragment entry point 'fn fs_main'.\n\nRequired:\n@fragment\nfn fs_main(@location(0) coords: vec2<f32>) -> @location(0) vec4<f32>".to_string(),
         ));
     }
 
-    // Check for VertexOutput struct (commonly needed)
-    if !wgsl_src.contains("struct VertexOutput") {
+    // Check for vertex output struct pattern (flexible - any name with required attributes)
+    let has_vertex_output_struct = 
+        wgsl_src.contains("@builtin(position)") && 
+        wgsl_src.contains("vec4<f32>") &&
+        wgsl_src.contains("@location(0)") &&
+        wgsl_src.contains("vec2<f32>");
+    
+    if !has_vertex_output_struct {
         return Err(ShaderError::ValidationError(
-            "Shader missing 'struct VertexOutput'.\n\nRequired:\nstruct VertexOutput {\n    @builtin(position) position: vec4<f32>,\n    @location(0) tex_coords: vec2<f32>,\n}".to_string(),
+            "Shader missing vertex output struct with required attributes.\n\nExample:\nstruct VSOut {\n    @builtin(position) pos: vec4<f32>,\n    @location(0) uv: vec2<f32>,\n}".to_string(),
         ));
     }
 
