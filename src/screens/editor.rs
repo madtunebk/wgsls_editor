@@ -2,6 +2,7 @@ use eframe::egui;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::screens::tabs::{FragmentTab, VertexTab};
 use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
     format_shader_error, validate_shader, BufferKind, MultiPassCallback, MultiPassPipelines,
@@ -53,6 +54,11 @@ pub struct TopApp {
     // Buffer system
     current_buffer: BufferKind,
     buffer_shaders: std::collections::HashMap<BufferKind, (String, String)>, // (vertex, fragment)
+    
+    // Tab instances per buffer
+    fragment_tabs: std::collections::HashMap<BufferKind, FragmentTab>,
+    vertex_tabs: std::collections::HashMap<BufferKind, VertexTab>,
+    
     saved_shaders: Option<std::collections::HashMap<BufferKind, (String, String)>>, // Saved state for Ctrl+S
     active_tab: u8, // 0 = Fragment, 1 = Vertex
 
@@ -110,9 +116,21 @@ impl TopApp {
             (DEFAULT_VERTEX.to_string(), "// Buffer D\n".to_string()),
         );
         
+        // Initialize tab instances for each buffer
+        let font_size = 14.0;
+        let mut fragment_tabs = std::collections::HashMap::new();
+        let mut vertex_tabs = std::collections::HashMap::new();
+        
+        for (buffer_kind, (vertex, fragment)) in &buffer_shaders {
+            fragment_tabs.insert(*buffer_kind, FragmentTab::new(fragment.clone(), font_size));
+            vertex_tabs.insert(*buffer_kind, VertexTab::new(vertex.clone(), font_size));
+        }
+        
         let mut app = Self {
             current_buffer: BufferKind::MainImage,
             buffer_shaders,
+            fragment_tabs,
+            vertex_tabs,
             saved_shaders: None,
             active_tab: 0,
 
@@ -651,65 +669,28 @@ impl TopApp {
     }
 
     fn render_code_editor(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
-        #[cfg(feature = "code_editor")]
-        {
-            let buffer_key = self.current_buffer;
-            let current_tab = self.active_tab;
-            
-            if let Some((vertex_code, fragment_code)) =
-                self.buffer_shaders.get_mut(&buffer_key)
-            {
-                // Set the minimum height to fill the available space
-                ui.set_min_height(ui.available_height());
+        let buffer_key = self.current_buffer;
+        let buffer_name = buffer_key.as_str();
+        
+        if self.active_tab == 0 {
+            // Fragment tab
+            if let Some(tab) = self.fragment_tabs.get_mut(&buffer_key) {
+                tab.render(ui, buffer_name);
                 
-                let (label, text) = if current_tab == 0 {
-                    ("frag", fragment_code)
-                } else {
-                    ("vert", vertex_code)
-                };
-
-                // Unique ID combining buffer, tab, and type to prevent state reuse
-                let editor_id = format!("editor_{}_{:?}_{}", label, buffer_key, current_tab);
-
-                // CodeEditor with unique ID - no wrapper needed
-                egui_code_editor::CodeEditor::default()
-                    .id_source(&editor_id)
-                    .with_fontsize(self.editor_font_size)
-                    .with_theme(egui_code_editor::ColorTheme::GITHUB_DARK)
-                    .with_syntax(wgsl_syntax::wgsl())
-                    .with_numlines(true)
-                    .vscroll(true)  // Re-enable scroll
-                    .auto_shrink(false)
-                    .show(ui, text);
+                // Sync code back to buffer_shaders
+                if let Some((_, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
+                    *fragment = tab.get_code().to_string();
+                }
             }
-        }
-
-        #[cfg(not(feature = "code_editor"))]
-        {
-            let buffer_key = self.current_buffer;
-            let current_tab = self.active_tab;
-            
-            if let Some((vertex_code, fragment_code)) =
-                self.buffer_shaders.get_mut(&buffer_key)
-            {
-                let (label, text) = if current_tab == 0 {
-                    ("frag", fragment_code)
-                } else {
-                    ("vert", vertex_code)
-                };
-
-                // Unique ID combining buffer, tab, and type to prevent state reuse
-                let editor_id =
-                    egui::Id::new(format!("editor_{}_{:?}_{}", label, buffer_key, current_tab));
+        } else {
+            // Vertex tab
+            if let Some(tab) = self.vertex_tabs.get_mut(&buffer_key) {
+                tab.render(ui, buffer_name);
                 
-                ui.add(
-                    egui::TextEdit::multiline(text)
-                        .id(editor_id)
-                        .font(egui::TextStyle::Monospace)
-                        .code_editor()
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(30),
-                );
+                // Sync code back to buffer_shaders
+                if let Some((vertex, _)) = self.buffer_shaders.get_mut(&buffer_key) {
+                    *vertex = tab.get_code().to_string();
+                }
             }
         }
     }
@@ -744,14 +725,17 @@ impl TopApp {
             // Ctrl/Cmd + Plus
             if i.modifiers.command && i.key_pressed(egui::Key::Plus) {
                 self.editor_font_size = (self.editor_font_size + 2.0).min(48.0);
+                self.update_all_tab_font_sizes();
             }
             // Ctrl/Cmd + Minus
             if i.modifiers.command && i.key_pressed(egui::Key::Minus) {
                 self.editor_font_size = (self.editor_font_size - 2.0).max(12.0);
+                self.update_all_tab_font_sizes();
             }
             // Ctrl/Cmd + 0
             if i.modifiers.command && i.key_pressed(egui::Key::Num0) {
                 self.editor_font_size = 16.0;
+                self.update_all_tab_font_sizes();
             }
             // Ctrl/Cmd + Enter
             if i.modifiers.command && i.key_pressed(egui::Key::Enter) {
@@ -863,6 +847,15 @@ impl TopApp {
             .show_info(&format!("Switched to {}", new_buffer.as_str()));
     }
 
+    fn update_all_tab_font_sizes(&mut self) {
+        for tab in self.fragment_tabs.values_mut() {
+            tab.set_font_size(self.editor_font_size);
+        }
+        for tab in self.vertex_tabs.values_mut() {
+            tab.set_font_size(self.editor_font_size);
+        }
+    }
+
     fn load_preset_shader(&mut self, name: &str) {
         let preset_content = match name {
             "default" => DEFAULT_FRAGMENT,
@@ -884,6 +877,14 @@ impl TopApp {
         {
             *fragment = preset_content.to_string();
             *vertex = DEFAULT_VERTEX.to_string();
+            
+            // Sync with tabs
+            if let Some(frag_tab) = self.fragment_tabs.get_mut(&self.current_buffer) {
+                frag_tab.set_code(preset_content.to_string());
+            }
+            if let Some(vert_tab) = self.vertex_tabs.get_mut(&self.current_buffer) {
+                vert_tab.set_code(DEFAULT_VERTEX.to_string());
+            }
         }
         self.apply_shader();
         self.toast_mgr
