@@ -211,6 +211,7 @@ impl ToastManager {
                 }
                 let max_h = (inner.height() - 40.0).max(100.0);
                 egui::ScrollArea::vertical()
+                    .id_source(format!("toast_scroll_{:?}", toast.created_at))  // Unique ID per toast
                     .max_height(max_h)
                     .auto_shrink([false, false])
                     .show(ui_col, |ui_body| {

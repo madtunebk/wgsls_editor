@@ -1,22 +1,11 @@
 use eframe::egui;
-use std::sync::{Arc, Mutex};
 
 pub fn settings_overlay(
     ctx: &egui::Context,
     show_settings: &mut bool,
-    show_audio_overlay: &mut bool,
     editor_font_size: &mut f32,
-    debug_audio: &mut bool,
-    debug_bass: &mut f32,
-    debug_mid: &mut f32,
-    debug_high: &mut f32,
-    bass_energy: &Arc<Mutex<f32>>,
-    mid_energy: &Arc<Mutex<f32>>,
-    high_energy: &Arc<Mutex<f32>>,
-    audio_file_path: &Option<String>,
-    on_load_audio: &mut Option<String>,
 ) {
-    if !*show_settings && !*show_audio_overlay {
+    if !*show_settings {
         return;
     }
 
@@ -45,110 +34,27 @@ pub fn settings_overlay(
 
             // Editor Section
             ui.push_id("editor_section", |ui| {
-            ui.group(|ui| {
-                ui.set_min_width(320.0);
-                ui.heading("📝 Editor");
-                ui.add_space(5.0);
+                ui.group(|ui| {
+                    ui.set_min_width(320.0);
+                    ui.heading("📝 Editor");
+                    ui.add_space(5.0);
 
-                ui.horizontal(|ui| {
-                    ui.label("Font Size:");
-                    ui.add_space(10.0);
-                    ui.add(egui::Slider::new(editor_font_size, 10.0..=24.0).text("px"));
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label("Current:");
-                    ui.add_space(10.0);
-                    ui.label(
-                        egui::RichText::new(format!("{}px", *editor_font_size as i32))
-                            .monospace()
-                            .strong()
-                    );
-                });
-            });
-            });
-
-            ui.add_space(10.0);
-
-            // Audio Section
-            ui.push_id("audio_section", |ui| {
-            ui.group(|ui| {
-                ui.set_min_width(320.0);
-                ui.heading("🎵 Audio Visualization");
-                ui.add_space(5.0);
-
-                // Audio file selection
-                ui.label(egui::RichText::new("Audio File:").strong());
-                ui.horizontal(|ui| {
-                    let file_text = if let Some(path) = audio_file_path {
-                        std::path::Path::new(path)
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("Unknown")
-                            .to_string()
-                    } else {
-                        "No audio loaded".to_string()
-                    };
-                    
-                    ui.label(
-                        egui::RichText::new(file_text)
-                            .monospace()
-                            .color(if audio_file_path.is_some() {
-                                egui::Color32::from_rgb(100, 200, 100)
-                            } else {
-                                egui::Color32::from_rgb(150, 150, 150)
-                            })
-                    );
-                });
-
-                ui.add_space(5.0);
-
-                if ui.button("📁 Load Audio File...").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Audio", &["mp3", "wav", "ogg", "flac"])
-                        .pick_file()
-                    {
-                        *on_load_audio = Some(path.to_string_lossy().to_string());
-                    }
-                }
-
-                ui.add_space(5.0);
-                ui.separator();
-                ui.add_space(5.0);
-
-                ui.checkbox(debug_audio, "Debug Mode (Manual Control)");
-
-                ui.add_space(5.0);
-
-                if *debug_audio {
-                    ui.label(egui::RichText::new("Manual Controls:").strong());
-                    ui.add(egui::Slider::new(debug_bass, 0.0..=1.0).text("Bass (Low)"));
-                    ui.add(egui::Slider::new(debug_mid, 0.0..=1.0).text("Mid"));
-                    ui.add(egui::Slider::new(debug_high, 0.0..=1.0).text("High (Treble)"));
-                } else {
-                    ui.label(egui::RichText::new("Live Audio Levels:").strong());
-                    let bass = *bass_energy.lock().unwrap();
-                    let mid = *mid_energy.lock().unwrap();
-                    let high = *high_energy.lock().unwrap();
-
-                    // Visual bars for audio levels
                     ui.horizontal(|ui| {
-                        ui.label("Bass:");
+                        ui.label("Font Size:");
                         ui.add_space(10.0);
-                        ui.add(egui::ProgressBar::new(bass).text(format!("{:.2}", bass)));
+                        ui.add(egui::Slider::new(editor_font_size, 10.0..=24.0).text("px"));
                     });
+
                     ui.horizontal(|ui| {
-                        ui.label("Mid:  ");
+                        ui.label("Current:");
                         ui.add_space(10.0);
-                        ui.add(egui::ProgressBar::new(mid).text(format!("{:.2}", mid)));
+                        ui.label(
+                            egui::RichText::new(format!("{}px", *editor_font_size as i32))
+                                .monospace()
+                                .strong(),
+                        );
                     });
-                    ui.horizontal(|ui| {
-                        ui.label("High:");
-                        ui.add_space(10.0);
-                        ui.add(egui::ProgressBar::new(high).text(format!("{:.2}", high)));
-                    });
-                }
-            });
+                });
             });
 
             ui.add_space(10.0);
@@ -157,7 +63,6 @@ pub fn settings_overlay(
             ui.vertical_centered(|ui| {
                 if ui.button(egui::RichText::new("Close").size(15.0)).clicked() {
                     *show_settings = false;
-                    *show_audio_overlay = false;
                 }
             });
 

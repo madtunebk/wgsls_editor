@@ -10,9 +10,12 @@ A modern WGSL shader editor built with Rust and egui, featuring real-time shader
 - 🎨 **Real-time WGSL Shader Editor** - Write and preview WGSL shaders with instant feedback
 - 🌈 **Syntax Highlighting** - Full WGSL syntax highlighting with color-coded tokens
 - 🔊 **Audio Reactive** - FFT-based audio analysis for shader uniforms (bass, mid, high frequencies)
+- 🎬 **Multi-Buffer Support** - MainImage, BufferA-D with separate vertex/fragment shaders
 - ⚡ **WGPU Backend** - Hardware-accelerated rendering using WebGPU
+- 💾 **State Management** - Save/restore shader checkpoints for safe experimentation
 - 🎯 **Dual Editor** - Separate vertex and fragment shader editing
 - 🛠️ **Error Handling** - Detailed shader compilation error reporting with line numbers
+- ⌨️ **Keyboard Shortcuts** - Efficient workflow with Ctrl+E export, Ctrl+S save, Ctrl+Z restore
 - 🎭 **Custom Themes** - Dark theme optimized for shader development
 - 📝 **Toast Notifications** - User-friendly status messages
 
@@ -111,9 +114,22 @@ cargo clippy --all-targets -- -D warnings
 
 ### Shader Editing
 
-1. **Switch Tabs**: Toggle between Fragment and Vertex shader editors
+1. **Switch Buffers**: Toggle between MainImage, BufferA-D, and Vertex shader tabs
 2. **Live Preview**: Shaders compile and render in real-time
-3. **Error Messages**: Compilation errors appear with line numbers and descriptions
+3. **Save State**: Press `Ctrl+S` to save current shader state before experimenting
+4. **Restore State**: Press `Ctrl+Z` to revert to last saved checkpoint
+5. **Export**: Press `Ctrl+E` to export shader to file
+6. **Error Messages**: Compilation errors appear with line numbers and descriptions
+
+### Multi-Buffer Workflow
+
+WebShard supports multi-buffer rendering similar to ShaderToy:
+
+- **MainImage**: Final output fragment shader
+- **BufferA-D**: Persistent buffers for complex effects (feedback, blur, etc.)
+- **Vertex Shader**: Shared vertex shader for all buffers
+
+See `src/assets/shards/demo_buffers.frag` for a working example.
 
 ### Audio Features
 
@@ -123,9 +139,13 @@ cargo clippy --all-targets -- -D warnings
 
 ### Keyboard Shortcuts
 
-- `Ctrl+S` - Save shader (if implemented)
+- `Ctrl+Enter` - Apply shader changes (compile and update)
+- `Ctrl+E` - Export shader to file
+- `Ctrl+S` - Save shader state (create checkpoint)
+- `Ctrl+Z` - Restore shader state (revert to last checkpoint)
 - `Ctrl+,` - Open settings
-- Tab switching for editor panels
+- `Ctrl++` / `Ctrl+-` - Increase/decrease editor font size
+- Tab switching for buffer editing (MainImage, BufferA-D, Vertex)
 
 ## Shader Uniforms
 
