@@ -2,8 +2,14 @@
 //! 
 //! Validates shaders before passing to pipeline to catch errors early
 //! and provide helpful error messages in the UI.
+//! 
+//! Uses WGSL definitions from wgsl_syntax module for consistency.
 
 use crate::utils::ShaderError;
+
+// WGSL Language Constants (aligned with wgsl_syntax.rs)
+const REQUIRED_KEYWORDS: &[&str] = &["fn", "struct", "var"];
+const REQUIRED_TYPES: &[&str] = &["f32", "vec2", "vec4"];
 
 /// Validates a WGSL shader source code
 /// 
@@ -23,12 +29,38 @@ pub fn validate_shader(wgsl_src: &str) -> Result<(), ShaderError> {
     // 2. Validate Uniforms struct
     validate_uniforms_struct(wgsl_src)?;
 
-    // 3. Validate required attributes and entry points
+    // 3. Validate basic WGSL language constructs
+    validate_wgsl_constructs(wgsl_src)?;
+
+    // 4. Validate required attributes and entry points
     validate_entry_points(wgsl_src)?;
 
-    // 4. Validate WGSL syntax with naga
+    // 5. Validate WGSL syntax with naga
     validate_wgsl_syntax(wgsl_src)?;
 
+    Ok(())
+}
+
+/// Validate basic WGSL language constructs are present
+fn validate_wgsl_constructs(wgsl_src: &str) -> Result<(), ShaderError> {
+    // Check for essential keywords
+    for keyword in REQUIRED_KEYWORDS {
+        if !wgsl_src.contains(keyword) {
+            return Err(ShaderError::ValidationError(
+                format!("Shader missing required WGSL keyword: '{}'", keyword)
+            ));
+        }
+    }
+    
+    // Check for essential types
+    for type_name in REQUIRED_TYPES {
+        if !wgsl_src.contains(type_name) {
+            return Err(ShaderError::ValidationError(
+                format!("Shader missing required WGSL type: '{}'", type_name)
+            ));
+        }
+    }
+    
     Ok(())
 }
 
@@ -84,7 +116,7 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
 
 /// Validate required shader entry points and attributes
 fn validate_entry_points(wgsl_src: &str) -> Result<(), ShaderError> {
-    // Check for @vertex and @fragment attributes
+    // Check for @vertex and @fragment attributes (from REQUIRED_ATTRIBUTES)
     if !wgsl_src.contains("@vertex") {
         return Err(ShaderError::ValidationError(
             "Shader missing @vertex attribute".to_string(),
@@ -111,16 +143,20 @@ fn validate_entry_points(wgsl_src: &str) -> Result<(), ShaderError> {
         ));
     }
 
-    // Check for vertex output struct pattern (flexible - any name with required attributes)
-    let has_vertex_output_struct = 
-        wgsl_src.contains("@builtin(position)") && 
-        wgsl_src.contains("vec4<f32>") &&
-        wgsl_src.contains("@location(0)") &&
-        wgsl_src.contains("vec2<f32>");
+    // Check for required attributes in vertex output struct
+    let required_attrs = ["@builtin(position)", "@location(0)"];
+    for attr in required_attrs {
+        if !wgsl_src.contains(attr) {
+            return Err(ShaderError::ValidationError(
+                format!("Shader missing required attribute: {}", attr)
+            ));
+        }
+    }
     
-    if !has_vertex_output_struct {
+    // Check for vertex output struct pattern with required types
+    if !wgsl_src.contains("vec4<f32>") || !wgsl_src.contains("vec2<f32>") {
         return Err(ShaderError::ValidationError(
-            "Shader missing vertex output struct with required attributes.\n\nExample:\nstruct VSOut {\n    @builtin(position) pos: vec4<f32>,\n    @location(0) uv: vec2<f32>,\n}".to_string(),
+            "Shader missing vertex output struct with required types.\n\nExample:\nstruct VSOut {\n    @builtin(position) pos: vec4<f32>,\n    @location(0) uv: vec2<f32>,\n}".to_string(),
         ));
     }
 
