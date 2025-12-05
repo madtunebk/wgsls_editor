@@ -51,9 +51,8 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
 pub struct TopApp {
     // Buffer system
     current_buffer: BufferKind,
-    buffer_shaders: std::collections::HashMap<BufferKind, (String, String)>, // (vertex, fragment)
     
-    // Individual tab instances for each buffer
+    // Individual tab instances for each buffer (source of truth for shader code)
     main_image_tab: MainImageTab,
     buffer_a_tab: BufferATab,
     buffer_b_tab: BufferBTab,
@@ -94,29 +93,6 @@ impl TopApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         log::info!("Initializing TopApp...");
         
-        // Initialize buffer shaders
-        let mut buffer_shaders = std::collections::HashMap::new();
-        buffer_shaders.insert(
-            BufferKind::MainImage,
-            (DEFAULT_VERTEX.to_string(), DEFAULT_FRAGMENT.to_string()),
-        );
-        buffer_shaders.insert(
-            BufferKind::BufferA,
-            (DEFAULT_VERTEX.to_string(), "// Buffer A\n".to_string()),
-        );
-        buffer_shaders.insert(
-            BufferKind::BufferB,
-            (DEFAULT_VERTEX.to_string(), "// Buffer B\n".to_string()),
-        );
-        buffer_shaders.insert(
-            BufferKind::BufferC,
-            (DEFAULT_VERTEX.to_string(), "// Buffer C\n".to_string()),
-        );
-        buffer_shaders.insert(
-            BufferKind::BufferD,
-            (DEFAULT_VERTEX.to_string(), "// Buffer D\n".to_string()),
-        );
-        
         // Initialize tab instances for each buffer
         let font_size = 14.0;
         let main_image_tab = MainImageTab::new(
@@ -147,7 +123,6 @@ impl TopApp {
         
         let mut app = Self {
             current_buffer: BufferKind::MainImage,
-            buffer_shaders,
             main_image_tab,
             buffer_a_tab,
             buffer_b_tab,
@@ -187,14 +162,8 @@ impl TopApp {
             let format = render_state.target_format;
             app.target_format = Some(format);
 
-            // Build sources map for initial compilation
-            let mut sources = std::collections::HashMap::new();
-            for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
-                if let Some((vertex, fragment)) = app.buffer_shaders.get(&buffer_kind) {
-                    let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
-                    sources.insert(buffer_kind, combined);
-                }
-            }
+            // Build sources map for initial compilation from tabs
+            let sources = app.get_all_buffer_sources();
 
             let screen_size = [1920, 1080]; // Initial buffer resolution
             
@@ -238,40 +207,39 @@ impl eframe::App for TopApp {
                 let mut validation_error: Option<ShaderError> = None;
                 
                 for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
-                    if let Some((vertex, fragment)) = self.buffer_shaders.get(&buffer_kind) {
-                        let fragment_trimmed = fragment.trim();
-                        
-                        // Skip empty fragments (except MainImage which needs default)
-                        if fragment_trimmed.is_empty() || fragment_trimmed.starts_with("//") {
-                            if buffer_kind == BufferKind::MainImage {
-                                // MainImage must exist, use default
-                                let combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
-                                sources.insert(buffer_kind, combined);
-                            }
-                            continue;
+                    let (vertex, fragment) = self.get_buffer_shaders(buffer_kind);
+                    let fragment_trimmed = fragment.trim();
+                    
+                    // Skip empty fragments (except MainImage which needs default)
+                    if fragment_trimmed.is_empty() || fragment_trimmed.starts_with("//") {
+                        if buffer_kind == BufferKind::MainImage {
+                            // MainImage must exist, use default
+                            let combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
+                            sources.insert(buffer_kind, combined);
                         }
-                        
-                        // Auto-inject boilerplate + standard vertex unless user provides custom vertex
-                        let vertex_trimmed = vertex.trim();
-                        let user_vertex = if vertex_trimmed.is_empty() || vertex_trimmed == DEFAULT_VERTEX.trim() {
-                            STANDARD_VERTEX
-                        } else {
-                            vertex_trimmed
-                        };
-                        
-                        // Build complete shader: boilerplate + vertex + fragment
-                        let complete_shader = format!("{}\n{}\n{}", SHADER_BOILERPLATE, user_vertex, fragment_trimmed);
-                        
-                        // Validate the complete shader
-                        if let Err(e) = validate_shader(&complete_shader) {
-                            validation_error = Some(ShaderError::ValidationError(
-                                format!("[{:?}] {}", buffer_kind, e)
-                            ));
-                            break;
-                        }
-                        
-                        sources.insert(buffer_kind, complete_shader);
+                        continue;
                     }
+                    
+                    // Auto-inject boilerplate + standard vertex unless user provides custom vertex
+                    let vertex_trimmed = vertex.trim();
+                    let user_vertex = if vertex_trimmed.is_empty() || vertex_trimmed == DEFAULT_VERTEX.trim() {
+                        STANDARD_VERTEX
+                    } else {
+                        vertex_trimmed
+                    };
+                    
+                    // Build complete shader: boilerplate + vertex + fragment
+                    let complete_shader = format!("{}\n{}\n{}", SHADER_BOILERPLATE, user_vertex, fragment_trimmed);
+                    
+                    // Validate the complete shader
+                    if let Err(e) = validate_shader(&complete_shader) {
+                        validation_error = Some(ShaderError::ValidationError(
+                            format!("[{:?}] {}", buffer_kind, e)
+                        ));
+                        break;
+                    }
+                    
+                    sources.insert(buffer_kind, complete_shader);
                 }
                 
                 // Ensure MainImage exists
@@ -694,49 +662,36 @@ impl TopApp {
         let buffer_key = self.current_buffer;
         let is_fragment_tab = self.active_tab == 0;
         
-        // Delegate to the appropriate buffer-specific tab
+        // Delegate to the appropriate buffer-specific tab (tabs are the source of truth)
         match buffer_key {
-            BufferKind::MainImage => {
-                self.main_image_tab.render(ui, is_fragment_tab);
-                let (v, f) = self.main_image_tab.get_shaders();
-                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
-                    *vertex = v.to_string();
-                    *fragment = f.to_string();
-                }
-            }
-            BufferKind::BufferA => {
-                self.buffer_a_tab.render(ui, is_fragment_tab);
-                let (v, f) = self.buffer_a_tab.get_shaders();
-                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
-                    *vertex = v.to_string();
-                    *fragment = f.to_string();
-                }
-            }
-            BufferKind::BufferB => {
-                self.buffer_b_tab.render(ui, is_fragment_tab);
-                let (v, f) = self.buffer_b_tab.get_shaders();
-                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
-                    *vertex = v.to_string();
-                    *fragment = f.to_string();
-                }
-            }
-            BufferKind::BufferC => {
-                self.buffer_c_tab.render(ui, is_fragment_tab);
-                let (v, f) = self.buffer_c_tab.get_shaders();
-                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
-                    *vertex = v.to_string();
-                    *fragment = f.to_string();
-                }
-            }
-            BufferKind::BufferD => {
-                self.buffer_d_tab.render(ui, is_fragment_tab);
-                let (v, f) = self.buffer_d_tab.get_shaders();
-                if let Some((vertex, fragment)) = self.buffer_shaders.get_mut(&buffer_key) {
-                    *vertex = v.to_string();
-                    *fragment = f.to_string();
-                }
-            }
+            BufferKind::MainImage => self.main_image_tab.render(ui, is_fragment_tab),
+            BufferKind::BufferA => self.buffer_a_tab.render(ui, is_fragment_tab),
+            BufferKind::BufferB => self.buffer_b_tab.render(ui, is_fragment_tab),
+            BufferKind::BufferC => self.buffer_c_tab.render(ui, is_fragment_tab),
+            BufferKind::BufferD => self.buffer_d_tab.render(ui, is_fragment_tab),
         }
+    }
+
+    // Helper: Get shaders from a specific buffer's tab
+    fn get_buffer_shaders(&self, buffer: BufferKind) -> (&str, &str) {
+        match buffer {
+            BufferKind::MainImage => self.main_image_tab.get_shaders(),
+            BufferKind::BufferA => self.buffer_a_tab.get_shaders(),
+            BufferKind::BufferB => self.buffer_b_tab.get_shaders(),
+            BufferKind::BufferC => self.buffer_c_tab.get_shaders(),
+            BufferKind::BufferD => self.buffer_d_tab.get_shaders(),
+        }
+    }
+
+    // Helper: Get all buffer sources for compilation
+    fn get_all_buffer_sources(&self) -> std::collections::HashMap<BufferKind, String> {
+        let mut sources = std::collections::HashMap::new();
+        for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
+            let (vertex, fragment) = self.get_buffer_shaders(buffer_kind);
+            let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
+            sources.insert(buffer_kind, combined);
+        }
+        sources
     }
 
     fn render_shader_preview(&mut self, ui: &mut egui::Ui) {
@@ -801,11 +756,8 @@ impl TopApp {
     }
 
     fn apply_shader(&mut self) {
-        let (vertex_len, fragment_len) = self
-            .buffer_shaders
-            .get(&BufferKind::MainImage)
-            .map(|(v, f)| (v.len(), f.len()))
-            .unwrap_or((0, 0));
+        let (vertex, fragment) = self.main_image_tab.get_shaders();
+        let (vertex_len, fragment_len) = (vertex.len(), fragment.len());
         
         log::info!(
             "Apply shader requested - compiling Main Image (vertex: {} bytes, fragment: {} bytes)",
@@ -821,25 +773,70 @@ impl TopApp {
 
     fn reset_shader(&mut self) {
         log::info!("Resetting shader to defaults");
-        if let Some((vertex, fragment)) =
-            self.buffer_shaders.get_mut(&self.current_buffer)
-        {
-            *vertex = DEFAULT_VERTEX.to_string();
-            *fragment = DEFAULT_FRAGMENT.to_string();
+        match self.current_buffer {
+            BufferKind::MainImage => {
+                self.main_image_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                self.main_image_tab.set_fragment(DEFAULT_FRAGMENT.to_string());
+            }
+            BufferKind::BufferA => {
+                self.buffer_a_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                self.buffer_a_tab.set_fragment("// Buffer A\n".to_string());
+            }
+            BufferKind::BufferB => {
+                self.buffer_b_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                self.buffer_b_tab.set_fragment("// Buffer B\n".to_string());
+            }
+            BufferKind::BufferC => {
+                self.buffer_c_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                self.buffer_c_tab.set_fragment("// Buffer C\n".to_string());
+            }
+            BufferKind::BufferD => {
+                self.buffer_d_tab.set_vertex(DEFAULT_VERTEX.to_string());
+                self.buffer_d_tab.set_fragment("// Buffer D\n".to_string());
+            }
         }
         self.apply_shader();
     }
 
     fn save_shader_state(&mut self) {
-        // Clone current shaders to saved state
-        self.saved_shaders = Some(self.buffer_shaders.clone());
+        // Build HashMap from current tab state
+        let mut saved = std::collections::HashMap::new();
+        for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
+            let (v, f) = self.get_buffer_shaders(buffer_kind);
+            saved.insert(buffer_kind, (v.to_string(), f.to_string()));
+        }
+        self.saved_shaders = Some(saved);
         self.toast_mgr.show_success("✓ Shader state saved!");
         log::info!("Shader state saved (Ctrl+R to restore)");
     }
 
     fn restore_shader_state(&mut self) {
         if let Some(saved) = &self.saved_shaders {
-            self.buffer_shaders = saved.clone();
+            // Restore to tabs
+            for (buffer_kind, (vertex, fragment)) in saved {
+                match buffer_kind {
+                    BufferKind::MainImage => {
+                        self.main_image_tab.set_vertex(vertex.clone());
+                        self.main_image_tab.set_fragment(fragment.clone());
+                    }
+                    BufferKind::BufferA => {
+                        self.buffer_a_tab.set_vertex(vertex.clone());
+                        self.buffer_a_tab.set_fragment(fragment.clone());
+                    }
+                    BufferKind::BufferB => {
+                        self.buffer_b_tab.set_vertex(vertex.clone());
+                        self.buffer_b_tab.set_fragment(fragment.clone());
+                    }
+                    BufferKind::BufferC => {
+                        self.buffer_c_tab.set_vertex(vertex.clone());
+                        self.buffer_c_tab.set_fragment(fragment.clone());
+                    }
+                    BufferKind::BufferD => {
+                        self.buffer_d_tab.set_vertex(vertex.clone());
+                        self.buffer_d_tab.set_fragment(fragment.clone());
+                    }
+                }
+            }
             self.toast_mgr.show_success("↶ Shader state restored!");
             log::info!("Shader state restored from save point");
         } else {
@@ -915,34 +912,27 @@ impl TopApp {
             }
         };
 
-        if let Some((vertex, fragment)) =
-            self.buffer_shaders.get_mut(&self.current_buffer)
-        {
-            *fragment = preset_content.to_string();
-            *vertex = DEFAULT_VERTEX.to_string();
-            
-            // Sync with the appropriate tab
-            match self.current_buffer {
-                BufferKind::MainImage => {
-                    self.main_image_tab.set_fragment(preset_content.to_string());
-                    self.main_image_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                }
-                BufferKind::BufferA => {
-                    self.buffer_a_tab.set_fragment(preset_content.to_string());
-                    self.buffer_a_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                }
-                BufferKind::BufferB => {
-                    self.buffer_b_tab.set_fragment(preset_content.to_string());
-                    self.buffer_b_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                }
-                BufferKind::BufferC => {
-                    self.buffer_c_tab.set_fragment(preset_content.to_string());
-                    self.buffer_c_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                }
-                BufferKind::BufferD => {
-                    self.buffer_d_tab.set_fragment(preset_content.to_string());
-                    self.buffer_d_tab.set_vertex(DEFAULT_VERTEX.to_string());
-                }
+        // Update the appropriate tab directly
+        match self.current_buffer {
+            BufferKind::MainImage => {
+                self.main_image_tab.set_fragment(preset_content.to_string());
+                self.main_image_tab.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+            BufferKind::BufferA => {
+                self.buffer_a_tab.set_fragment(preset_content.to_string());
+                self.buffer_a_tab.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+            BufferKind::BufferB => {
+                self.buffer_b_tab.set_fragment(preset_content.to_string());
+                self.buffer_b_tab.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+            BufferKind::BufferC => {
+                self.buffer_c_tab.set_fragment(preset_content.to_string());
+                self.buffer_c_tab.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+            BufferKind::BufferD => {
+                self.buffer_d_tab.set_fragment(preset_content.to_string());
+                self.buffer_d_tab.set_vertex(DEFAULT_VERTEX.to_string());
             }
         }
         self.apply_shader();
@@ -983,41 +973,37 @@ impl TopApp {
         
         // Export shared vertex shader (only once)
         content.push_str("// ========== SHARED VERTEX SHADER ==========\n");
-        if let Some((vertex, _)) =
-            self.buffer_shaders.get(&BufferKind::MainImage)
-        {
-            content.push_str(vertex);
-            if !vertex.ends_with('\n') {
-                content.push('\n');
-            }
+        let (vertex, _) = self.main_image_tab.get_shaders();
+        content.push_str(vertex);
+        if !vertex.ends_with('\n') {
+            content.push('\n');
         }
         content.push_str("// ========== END SHARED VERTEX SHADER ==========\n\n");
         
         // Export fragment shaders for each buffer
         for buffer_type in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
-            if let Some((_, fragment)) = self.buffer_shaders.get(&buffer_type) {
-                let buffer_name = match buffer_type {
-                    BufferKind::MainImage => "MAIN_IMAGE",
-                    BufferKind::BufferA => "BUFFER_A",
-                    BufferKind::BufferB => "BUFFER_B",
-                    BufferKind::BufferC => "BUFFER_C",
-                    BufferKind::BufferD => "BUFFER_D",
-                };
-                
-                // Fragment shader section only
-                content.push_str(&format!(
-                    "// ========== {} FRAGMENT ==========\n",
-                    buffer_name
-                ));
-                content.push_str(fragment);
-                if !fragment.ends_with('\n') {
-                    content.push('\n');
-                }
-                content.push_str(&format!(
-                    "// ========== END {} FRAGMENT ==========\n\n",
-                    buffer_name
-                ));
+            let (_, fragment) = self.get_buffer_shaders(buffer_type);
+            let buffer_name = match buffer_type {
+                BufferKind::MainImage => "MAIN_IMAGE",
+                BufferKind::BufferA => "BUFFER_A",
+                BufferKind::BufferB => "BUFFER_B",
+                BufferKind::BufferC => "BUFFER_C",
+                BufferKind::BufferD => "BUFFER_D",
+            };
+            
+            // Fragment shader section only
+            content.push_str(&format!(
+                "// ========== {} FRAGMENT ==========\n",
+                buffer_name
+            ));
+            content.push_str(fragment);
+            if !fragment.ends_with('\n') {
+                content.push('\n');
             }
+            content.push_str(&format!(
+                "// ========== END {} FRAGMENT ==========\n\n",
+                buffer_name
+            ));
         }
 
         // Write to file
