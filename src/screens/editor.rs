@@ -387,6 +387,7 @@ impl eframe::App for TopApp {
                     ui.set_max_size(egui::vec2(800.0, 600.0));
 
                     egui::ScrollArea::vertical()
+                        .id_salt("error_window_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             ui.add_space(8.0);
