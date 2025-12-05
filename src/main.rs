@@ -11,10 +11,41 @@ fn main() {
         .filter_level(log::LevelFilter::Info)
         .init();
 
+    // Set up panic hook to log panics instead of just crashing
+    std::panic::set_hook(Box::new(|panic_info| {
+        let payload = panic_info.payload();
+        let message = if let Some(s) = payload.downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic".to_string()
+        };
+        
+        let location = if let Some(loc) = panic_info.location() {
+            format!(" at {}:{}:{}", loc.file(), loc.line(), loc.column())
+        } else {
+            String::new()
+        };
+        
+        log::error!("Panic occurred{}: {}", location, message);
+        eprintln!("PANIC{}: {}", location, message);
+    }));
+
     log::info!("Application starting...");
 
     let mut native_options = NativeOptions::default();
     native_options.renderer = eframe::Renderer::Wgpu;
+    
+    // Configure WGPU to handle errors gracefully instead of panicking
+    native_options.wgpu_options = eframe::egui_wgpu::WgpuConfiguration {
+        // Use a custom error handler that logs instead of panicking
+        on_surface_error: std::sync::Arc::new(|err| {
+            log::error!("WGPU surface error: {}", err);
+            eframe::egui_wgpu::SurfaceErrorAction::SkipFrame
+        }),
+        ..Default::default()
+    };
 
     // Auto-detect monitor size and position window, or fallback to defaults
     let (window_size, window_pos) = if let Some((x, y, w, h)) = utils::detect_primary_monitor_xrandr() {

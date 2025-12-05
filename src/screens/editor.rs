@@ -60,7 +60,6 @@ pub struct TopApp {
     // UI state
     editor_font_size: f32,
     show_settings: bool,
-    show_audio_overlay: bool,
     show_error_window: bool,
     error_message: String,
     show_preset_menu: bool,
@@ -119,7 +118,6 @@ impl TopApp {
 
             editor_font_size: 14.0,
             show_settings: false,
-            show_audio_overlay: false,
             show_error_window: false,
             error_message: String::new(),
             show_preset_menu: false,
@@ -305,7 +303,7 @@ impl eframe::App for TopApp {
                     ui.set_max_size(egui::vec2(800.0, 600.0));
 
                     egui::ScrollArea::vertical()
-                        .id_source("error_window_scroll")
+                        .id_salt("error_window_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             ui.add_space(8.0);
