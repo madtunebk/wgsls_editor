@@ -94,6 +94,30 @@ impl ShaderJson {
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, code.as_bytes())
     }
 
+    /// Decode embedded base64 images to raw PNG/JPEG bytes
+    /// Returns array of Option<Vec<u8>> for iChannel0-3
+    pub fn decode_embedded_images(&self) -> [Option<Vec<u8>>; 4] {
+        let mut images = [None, None, None, None];
+        
+        let channels = [&self.ichannel0, &self.ichannel1, &self.ichannel2, &self.ichannel3];
+        
+        for (i, channel) in channels.iter().enumerate() {
+            if let Some(base64_data) = channel {
+                match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data) {
+                    Ok(bytes) => {
+                        log::info!("Decoded embedded image for iChannel{} ({} bytes)", i, bytes.len());
+                        images[i] = Some(bytes);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to decode base64 for iChannel{}: {}", i, e);
+                    }
+                }
+            }
+        }
+        
+        images
+    }
+
     /// Convert to HashMap for MultiPassPipelines
     /// Injects boilerplate (uniforms, VSOut, vertex shader, texture bindings)
     pub fn to_shader_map(&self) -> HashMap<BufferKind, String> {
