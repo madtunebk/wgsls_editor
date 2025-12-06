@@ -2,6 +2,8 @@
 
 A modern WGSL shader editor built with Rust and egui, featuring real-time multi-pass shader compilation, syntax highlighting, and audio-reactive capabilities.
 
+**100% compatible with [TempRS](https://github.com/madtunebk/TempRS)** - Built specifically to work seamlessly with the TempRS shader runtime!
+
 ![Rust](https://img.shields.io/badge/rust-2021-orange.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -377,6 +379,10 @@ cargo build --release
 - [ ] WebGL export
 - [ ] Plugin system
 - [ ] Cloud shader sharing
+
+## Related Projects
+
+- **[TempRS](https://github.com/madtunebk/TempRS)** - WGSL shader runtime that this editor was built for. WebShard Editor is 100% compatible with TempRS, sharing the same shader format and multi-pass pipeline architecture.
 
 ---
 
