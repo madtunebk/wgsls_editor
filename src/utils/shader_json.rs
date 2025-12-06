@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::utils::BufferKind;
+use crate::utils::shader_constants::{SHADER_BOILERPLATE, STANDARD_VERTEX, TEXTURE_BINDINGS};
 
 /// JSON shader format for editor exports
 /// Supports both plain text and base64-encoded shaders
@@ -33,6 +34,19 @@ pub struct ShaderJson {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buffer_d: Option<String>,
+
+    /// Base64-encoded PNG/JPEG image data for iChannel0-3
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ichannel0: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ichannel1: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ichannel2: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ichannel3: Option<String>,
 }
 
 fn default_version() -> String {
@@ -87,12 +101,12 @@ impl ShaderJson {
             || self.buffer_c.is_some()
             || self.buffer_d.is_some();
 
-        // Boilerplate (injected to ALL shaders)
-        let boilerplate = generate_boilerplate();
+        // Use centralized boilerplate from shader_constants (includes iChannel0-3)
+        let boilerplate = SHADER_BOILERPLATE;
 
-        // Vertex shader (use provided or default)
-        let vertex_shader = self.vertex.clone()
-            .unwrap_or_else(generate_default_vertex);
+        // Vertex shader (use provided or standard default)
+        let vertex_shader = self.vertex.as_deref()
+            .unwrap_or(STANDARD_VERTEX);
 
         // Process BufferA
         if let Some(buffer_a_code) = &self.buffer_a {
@@ -119,10 +133,9 @@ impl ShaderJson {
         }
 
         // Process MainImage (fragment)
-        // If we have buffers, inject texture bindings
+        // If we have buffers, inject texture bindings for BufferA-D access
         let main_image_code = if has_buffers {
-            let texture_bindings = generate_texture_bindings();
-            format!("{}\n{}\n{}\n{}", boilerplate, texture_bindings, vertex_shader, &self.fragment)
+            format!("{}\n{}\n{}\n{}", boilerplate, TEXTURE_BINDINGS, vertex_shader, &self.fragment)
         } else {
             format!("{}\n{}\n{}", boilerplate, vertex_shader, &self.fragment)
         };
@@ -130,57 +143,6 @@ impl ShaderJson {
 
         map
     }
-}
-
-/// Generate uniforms + VSOut boilerplate (always injected)
-fn generate_boilerplate() -> String {
-    r#"// Auto-injected boilerplate
-struct Uniforms {
-    time: f32,
-    audio_bass: f32,
-    audio_mid: f32,
-    audio_high: f32,
-    resolution: vec2<f32>,
-    _pad0: vec2<f32>,
-}
-
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
-struct VSOut {
-    @builtin(position) pos: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
-"#.to_string()
-}
-
-/// Generate default vertex shader
-fn generate_default_vertex() -> String {
-    r#"// Auto-injected default vertex shader
-@vertex
-fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
-    var out: VSOut;
-    let x = f32((vi & 1u) << 2u);
-    let y = f32((vi & 2u) << 1u);
-    out.pos = vec4<f32>(x - 1.0, 1.0 - y, 0.0, 1.0);
-    out.uv = vec2<f32>(x * 0.5, y * 0.5);
-    return out;
-}
-"#.to_string()
-}
-
-/// Generate texture bindings for multi-pass (only for MainImage)
-fn generate_texture_bindings() -> String {
-    r#"// Auto-injected texture bindings for multi-pass
-@group(1) @binding(0) var buffer_a_texture: texture_2d<f32>;
-@group(1) @binding(1) var buffer_a_sampler: sampler;
-@group(1) @binding(2) var buffer_b_texture: texture_2d<f32>;
-@group(1) @binding(3) var buffer_b_sampler: sampler;
-@group(1) @binding(4) var buffer_c_texture: texture_2d<f32>;
-@group(1) @binding(5) var buffer_c_sampler: sampler;
-@group(1) @binding(6) var buffer_d_texture: texture_2d<f32>;
-@group(1) @binding(7) var buffer_d_sampler: sampler;
-"#.to_string()
 }
 
 /// Decode base64 string to UTF-8 text

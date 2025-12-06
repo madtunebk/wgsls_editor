@@ -41,7 +41,8 @@ pub struct TopApp {
     debug_mid: f32,
     debug_high: f32,
     audio_file_path: Option<String>,
-    image_file_path: Option<String>,
+    image_file_paths: [Option<String>; 4], // Support up to 4 image channels (iChannel0-3)
+    selected_image_channel: usize, // Which channel to load next image into (0-3)
 
     // Notifications
     notification_mgr: NotificationManager,
@@ -136,7 +137,8 @@ impl TopApp {
             debug_mid: 0.0,
             debug_high: 0.0,
             audio_file_path: None,
-            image_file_path: None,
+            image_file_paths: [None, None, None, None],
+            selected_image_channel: 0,
 
             notification_mgr: NotificationManager::default(),
 
@@ -154,9 +156,8 @@ impl TopApp {
             app.target_format = Some(format);
 
             let sources = app.get_all_buffer_sources();
-            let image_path = app.image_file_path.as_deref();
 
-            match MultiPassPipelines::new(&device, &queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, image_path) {
+            match MultiPassPipelines::new(&device, &queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, &app.image_file_paths) {
                 Ok(pipeline) => {
                     *app.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
                 }
@@ -284,12 +285,10 @@ impl eframe::App for TopApp {
 
                 log::debug!("[TopApp] Compiling multi-pass pipeline with {} buffers", sources.len());
 
-                let image_path = self.image_file_path.as_deref();
-
                 // Wrap pipeline creation in panic catcher to prevent crashes
                 // Use catch_panic_mut since WGPU Device is not UnwindSafe
                 let result = catch_panic_mut(|| {
-                    MultiPassPipelines::new(device, queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, image_path)
+                    MultiPassPipelines::new(device, queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, &self.image_file_paths)
                 });
 
                 match result {
@@ -362,7 +361,8 @@ impl eframe::App for TopApp {
                 ctx,
                 &mut self.show_preset_menu,
                 &self.audio_file_path,
-                &self.image_file_path,
+                &self.image_file_paths,
+                &mut self.selected_image_channel,
                 &mut self.debug_audio,
                 &mut self.debug_bass,
                 &mut self.debug_mid,
@@ -379,8 +379,8 @@ impl eframe::App for TopApp {
                 shader_properties::ShaderPropertiesAction::LoadAudioFile(path) => {
                     self.load_audio_file(path);
                 }
-                shader_properties::ShaderPropertiesAction::LoadImageFile(path) => {
-                    self.load_image_file(path);
+                shader_properties::ShaderPropertiesAction::LoadImageFile(channel, path) => {
+                    self.load_image_file(channel, path);
                 }
                 shader_properties::ShaderPropertiesAction::ExportShard => {
                     self.export_shard();
@@ -775,28 +775,35 @@ impl TopApp {
             .pick_file()
         {
             let path_str = path.to_string_lossy().to_string();
-            self.load_image_file(path_str);
+            // Use the currently selected channel
+            self.load_image_file(self.selected_image_channel, path_str);
         }
     }
 
-    fn load_image_file(&mut self, path: String) {
-        log::info!("Loading image texture: {}", path);
+    fn load_image_file(&mut self, channel: usize, path: String) {
+        if channel > 3 {
+            self.notification_mgr.error(format!("Invalid channel: {}", channel));
+            return;
+        }
 
-        // Store the image file path
-        self.image_file_path = Some(path.clone());
+        log::info!("Loading image texture to iChannel{}: {}", channel, path);
+
+        // Store the image file path for the selected channel
+        self.image_file_paths[channel] = Some(path.clone());
 
         // Trigger shader recompilation to load the new image texture
         self.shader_needs_update.store(true, Ordering::Relaxed);
 
         self.notification_mgr.success(format!(
-            "Image loaded: {}",
+            "Image loaded to iChannel{}: {}",
+            channel,
             std::path::Path::new(&path)
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(&path)
         ));
         
-        log::info!("Image texture will be available as iChannel0 in all shaders");
+        log::info!("Image texture available as iChannel{} in all shaders", channel);
     }
 
     fn load_audio_file_dialog(&mut self) {
@@ -1036,6 +1043,31 @@ impl TopApp {
             }
         }
 
+        // Load embedded images from base64
+        for (i, channel_data) in [
+            &shader_json.ichannel0,
+            &shader_json.ichannel1,
+            &shader_json.ichannel2,
+            &shader_json.ichannel3,
+        ].iter().enumerate() {
+            if let Some(base64_data) = channel_data {
+                // Decode base64 to image bytes
+                if let Ok(image_bytes) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data.as_bytes()) {
+                    // Save to temporary file in cache
+                    if let Some(cache_dir) = dirs::cache_dir() {
+                        let temp_dir = cache_dir.join("webshard_editor").join("embedded_textures");
+                        let _ = std::fs::create_dir_all(&temp_dir);
+                        
+                        let temp_path = temp_dir.join(format!("ichannel{}.png", i));
+                        if std::fs::write(&temp_path, &image_bytes).is_ok() {
+                            self.image_file_paths[i] = Some(temp_path.to_string_lossy().to_string());
+                            log::info!("Loaded embedded texture for iChannel{}", i);
+                        }
+                    }
+                }
+            }
+        }
+
         // Apply the shader pipeline
         self.apply_shader();
     }
@@ -1107,6 +1139,19 @@ impl TopApp {
                 // Skip empty or comment-only buffers
                 if !(trimmed.is_empty() || trimmed.starts_with("//") && trimmed.lines().count() == 1) {
                     shader_json[json_key] = json!(ShaderJson::encode_to_base64(fragment));
+                }
+            }
+        }
+
+        // Add embedded images if loaded (base64-encoded PNG/JPEG)
+        for (i, path_opt) in self.image_file_paths.iter().enumerate() {
+            if let Some(path) = path_opt {
+                // Read image file and encode to base64
+                if let Ok(image_bytes) = std::fs::read(path) {
+                    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
+                    let channel_key = format!("ichannel{}", i);
+                    shader_json[channel_key] = json!(encoded);
+                    log::debug!("Embedded image {} ({} bytes)", i, image_bytes.len());
                 }
             }
         }

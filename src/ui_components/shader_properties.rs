@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 pub enum ShaderPropertiesAction {
     LoadPreset(String),
     LoadAudioFile(String),
-    LoadImageFile(String),
+    LoadImageFile(usize, String), // (channel_index, file_path)
     ExportShard,
     ImportShard,
     None,
@@ -17,7 +17,8 @@ pub fn render(
     ctx: &egui::Context,
     show_window: &mut bool,
     audio_file_path: &Option<String>,
-    image_file_path: &Option<String>,
+    image_file_paths: &[Option<String>; 4],
+    selected_channel: &mut usize,
     debug_audio: &mut bool,
     debug_bass: &mut f32,
     debug_mid: &mut f32,
@@ -202,46 +203,54 @@ pub fn render(
                 .corner_radius(6.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("Image Texture").size(16.0).strong());
+                    ui.label(egui::RichText::new("Image Textures").size(16.0).strong());
                     ui.add_space(8.0);
 
-                    // Image file display
+                    // Channel selector and status in compact layout
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("File:").strong().size(12.0));
+                        ui.label(egui::RichText::new("Target:").strong().size(12.0));
+                        egui::ComboBox::from_id_salt("image_channel_selector")
+                            .width(90.0)
+                            .selected_text(format!("iChannel{}", selected_channel))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(selected_channel, 0, "iChannel0");
+                                ui.selectable_value(selected_channel, 1, "iChannel1");
+                                ui.selectable_value(selected_channel, 2, "iChannel2");
+                                ui.selectable_value(selected_channel, 3, "iChannel3");
+                            });
+                        
+                        ui.add_space(8.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+                        
+                        // Show compact status: "0:✓ 1:- 2:✓ 3:-"
+                        ui.label(egui::RichText::new("Status:").strong().size(12.0));
                         ui.add_space(4.0);
-
-                        let file_text = if let Some(path) = image_file_path {
-                            std::path::Path::new(path)
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("Unknown")
-                                .to_string()
-                        } else {
-                            "No image loaded".to_string()
-                        };
-
-                        ui.label(
-                            egui::RichText::new(file_text)
-                                .monospace()
-                                .size(11.0)
-                                .color(if image_file_path.is_some() {
-                                    egui::Color32::from_rgb(120, 220, 120)
-                                } else {
-                                    egui::Color32::from_rgb(140, 140, 150)
-                                })
-                        );
+                        for (i, image_path) in image_file_paths.iter().enumerate() {
+                            let status = if image_path.is_some() { "✓" } else { "—" };
+                            ui.label(
+                                egui::RichText::new(format!("{}:{}", i, status))
+                                    .monospace()
+                                    .size(11.0)
+                                    .color(if image_path.is_some() {
+                                        egui::Color32::from_rgb(120, 220, 120)
+                                    } else {
+                                        egui::Color32::from_rgb(100, 100, 110)
+                                    })
+                            );
+                        }
                     });
 
                     ui.add_space(8.0);
 
                     if ui.add_sized([ui.available_width(), 30.0], egui::Button::new(
-                        egui::RichText::new("Load Image File...").size(13.0)
+                        egui::RichText::new(format!("Load to iChannel{}...", selected_channel)).size(13.0)
                     )).clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "gif", "webp"])
                             .pick_file()
                         {
-                            action = ShaderPropertiesAction::LoadImageFile(path.to_string_lossy().to_string());
+                            action = ShaderPropertiesAction::LoadImageFile(*selected_channel, path.to_string_lossy().to_string());
                         }
                     }
                 });
