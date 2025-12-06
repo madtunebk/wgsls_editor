@@ -1075,6 +1075,7 @@ impl TopApp {
     fn export_shard(&mut self) {
         use std::io::Write;
         use serde_json::json;
+        use image::ImageEncoder;  // Required for write_image method
 
         // Default to cache/TempRS/shaders/ folder (where player looks for shaders)
         let cache_shader_dir = dirs::cache_dir()
@@ -1143,15 +1144,33 @@ impl TopApp {
             }
         }
 
-        // Add embedded images if loaded (base64-encoded PNG/JPEG)
+        // Add embedded images if loaded (re-encode as PNG to ensure consistent color space)
         for (i, path_opt) in self.image_file_paths.iter().enumerate() {
             if let Some(path) = path_opt {
-                // Read image file and encode to base64
-                if let Ok(image_bytes) = std::fs::read(path) {
-                    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
-                    let channel_key = format!("ichannel{}", i);
-                    shader_json[channel_key] = json!(encoded);
-                    log::debug!("Embedded image {} ({} bytes)", i, image_bytes.len());
+                // Decode image, re-encode as PNG with proper RGBA8 color type
+                match image::open(path) {
+                    Ok(img) => {
+                        let rgba = img.to_rgba8();
+                        let (width, height) = rgba.dimensions();
+                        
+                        // Re-encode as PNG with explicit RGBA8 color type (ensures sRGB)
+                        let mut png_bytes = Vec::new();
+                        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+                        match encoder.write_image(&rgba, width, height, image::ExtendedColorType::Rgba8) {
+                            Ok(_) => {
+                                let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_bytes);
+                                let channel_key = format!("ichannel{}", i);
+                                shader_json[channel_key] = json!(encoded);
+                                log::info!("Embedded image {} ({}x{}, {} bytes PNG, RGBA8)", i, width, height, png_bytes.len());
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to encode image {}: {}", i, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load image {} from {:?}: {}", i, path, e);
+                    }
                 }
             }
         }
