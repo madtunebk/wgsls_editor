@@ -44,6 +44,9 @@ pub struct TopApp {
     image_file_paths: [Option<String>; 4], // Support up to 4 image channels (iChannel0-3)
     selected_image_channel: usize, // Which channel to load next image into (0-3)
 
+    // Gamma correction
+    gamma: Arc<Mutex<f32>>,
+
     // Notifications
     notification_mgr: NotificationManager,
 
@@ -139,6 +142,8 @@ impl TopApp {
             audio_file_path: None,
             image_file_paths: [None, None, None, None],
             selected_image_channel: 0,
+
+            gamma: Arc::new(Mutex::new(2.2)),  // Default gamma correction
 
             notification_mgr: NotificationManager::default(),
 
@@ -349,6 +354,7 @@ impl eframe::App for TopApp {
             ctx,
             &mut self.show_settings,
             &mut self.editor_font_size,
+            &self.gamma,
         );
         // Font size changes propagated automatically - no need to update individual tabs
         if (self.editor_font_size - old_font_size).abs() > 0.01 {
@@ -641,6 +647,7 @@ impl TopApp {
                 bass_energy: self.bass_energy.clone(),
                 mid_energy: self.mid_energy.clone(),
                 high_energy: self.high_energy.clone(),
+                gamma: self.gamma.clone(),
             };
 
             ui.painter()

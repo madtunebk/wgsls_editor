@@ -79,13 +79,12 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
     let expected_fields = [
         "time: f32",
         "audio_bass: f32",
-        "audio_mid: f32", 
+        "audio_mid: f32",
         "audio_high: f32",
         "resolution: vec2<f32>",
-        "_pad0: vec2<f32>",
-    ];
-    
-    // Check if shader defines a Uniforms struct
+        "gamma: f32",
+        "_pad0: f32",
+    ];    // Check if shader defines a Uniforms struct
     if !wgsl_src.contains("struct Uniforms") {
         return Err(ShaderError::ValidationError(
             "Shader must define a 'struct Uniforms' matching the pipeline structure.\n\nExpected:\nstruct Uniforms {\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}".to_string()
@@ -104,7 +103,7 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
                     let field_name = field.split(':').next().unwrap().trim();
                     if !struct_body.contains(field) {
                         return Err(ShaderError::ValidationError(format!(
-                            "Uniforms struct mismatch!\n\nMissing or incorrect field: {}\n\nExpected struct (32 bytes total):\n\nstruct Uniforms {{\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}}\n\nYour struct is missing or has the wrong type for field: '{}'",
+                            "Uniforms struct mismatch!\n\nMissing or incorrect field: {}\n\nExpected struct (32 bytes total):\n\nstruct Uniforms {{\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    gamma: f32,\n    _pad0: f32,\n}}\n\nYour struct is missing or has the wrong type for field: '{}'",
                             field, field_name
                         )));
                     }

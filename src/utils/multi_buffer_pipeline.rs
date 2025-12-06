@@ -868,6 +868,7 @@ pub struct MultiPassCallback {
     pub bass_energy: Arc<std::sync::Mutex<f32>>,
     pub mid_energy: Arc<std::sync::Mutex<f32>>,
     pub high_energy: Arc<std::sync::Mutex<f32>>,
+    pub gamma: Arc<std::sync::Mutex<f32>>,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
@@ -889,6 +890,7 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
         let bass = *self.bass_energy.lock().unwrap();
         let mid = *self.mid_energy.lock().unwrap();
         let high = *self.high_energy.lock().unwrap();
+        let gamma = *self.gamma.lock().unwrap();
 
         let uniforms = ShaderUniforms {
             time: elapsed,
@@ -896,7 +898,8 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
             audio_mid: mid,
             audio_high: high,
             resolution,
-            _pad0: [0.0, 0.0],
+            gamma,
+            _pad0: 0.0,
         };
 
         self.shader.update_uniforms(queue, &uniforms);

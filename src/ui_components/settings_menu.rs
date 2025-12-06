@@ -1,9 +1,11 @@
 use eframe::egui;
+use std::sync::{Arc, Mutex};
 
 pub fn settings_overlay(
     ctx: &egui::Context,
     show_settings: &mut bool,
     editor_font_size: &mut f32,
+    gamma: &Arc<Mutex<f32>>,
 ) {
     if !*show_settings {
         return;
@@ -54,6 +56,37 @@ pub fn settings_overlay(
                                 .strong(),
                         );
                     });
+                });
+            });
+
+            ui.add_space(10.0);
+
+            // Rendering Section
+            ui.push_id("rendering_section", |ui| {
+                ui.group(|ui| {
+                    ui.set_min_width(320.0);
+                    ui.heading("🎨 Rendering");
+                    ui.add_space(5.0);
+
+                    let mut gamma_value = gamma.lock().unwrap();
+                    ui.horizontal(|ui| {
+                        ui.label("Gamma Correction:");
+                        ui.add_space(10.0);
+                        ui.add(egui::Slider::new(&mut *gamma_value, 1.0..=3.0).text("γ"));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Current:");
+                        ui.add_space(10.0);
+                        ui.label(
+                            egui::RichText::new(format!("{:.2}", *gamma_value))
+                                .monospace()
+                                .strong(),
+                        );
+                    });
+
+                    ui.add_space(5.0);
+                    ui.label(egui::RichText::new("Lower = darker, Higher = brighter").small().weak());
                 });
             });
 

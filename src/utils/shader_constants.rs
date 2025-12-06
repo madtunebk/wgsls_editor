@@ -36,7 +36,8 @@ struct Uniforms {
     audio_mid: f32,
     audio_high: f32,
     resolution: vec2<f32>,
-    _pad0: vec2<f32>,
+    gamma: f32,
+    _pad0: f32,
 }
 
 @group(0) @binding(0)
@@ -72,6 +73,11 @@ var iChannel3: texture_2d<f32>;
 
 @group(1) @binding(15)
 var iChannel3Sampler: sampler;
+
+// Gamma correction helper function
+fn applyGamma(color: vec3<f32>, gamma: f32) -> vec3<f32> {
+    return pow(color, vec3<f32>(1.0 / gamma));
+}
 "#;
 
 /// Standard vertex shader auto-injected if user doesn't provide one
