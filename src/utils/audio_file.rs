@@ -1,9 +1,26 @@
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use log::{debug, info, warn, trace};
 
 use super::audio_analyzer::AudioAnalyzer;
+
+/// Global audio control for play/pause/stop
+static AUDIO_RUNNING: AtomicBool = AtomicBool::new(false);
+static AUDIO_SHOULD_STOP: AtomicBool = AtomicBool::new(false);
+
+/// Stop the currently playing audio
+pub fn stop_audio() {
+    info!("Stopping audio playback");
+    AUDIO_SHOULD_STOP.store(true, Ordering::Relaxed);
+}
+
+/// Check if audio is currently playing
+#[allow(dead_code)]
+pub fn is_audio_playing() -> bool {
+    AUDIO_RUNNING.load(Ordering::Relaxed)
+}
 
 /// Wrapper to tap into audio samples and convert stereo to mono i16 for FFT
 struct TappedSource<I> {
@@ -70,6 +87,14 @@ pub fn start_file_audio(
     use std::fs::File;
     use std::io::BufReader;
 
+    // Stop any existing audio first
+    stop_audio();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    
+    // Reset control flags
+    AUDIO_SHOULD_STOP.store(false, Ordering::Relaxed);
+    AUDIO_RUNNING.store(true, Ordering::Relaxed);
+
     info!("Loading audio file: {}", file_path);
 
     // Open audio file for validation
@@ -111,13 +136,29 @@ pub fn start_file_audio(
         debug!("Audio FFT analyzer thread started");
 
         // Receive samples from playback thread
-        while let Ok(sample) = rx.recv() {
-            sample_buffer.push(sample);
+        loop {
+            // Check if we should stop
+            if AUDIO_SHOULD_STOP.load(Ordering::Relaxed) {
+                debug!("Audio FFT analyzer stopping");
+                break;
+            }
+            
+            match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                Ok(sample) => {
+                    sample_buffer.push(sample);
 
-            // Process in batches for efficiency
-            if sample_buffer.len() >= 2048 {
-                analyzer.process_samples(&sample_buffer);
-                sample_buffer.clear();
+                    // Process in batches for efficiency
+                    if sample_buffer.len() >= 2048 {
+                        analyzer.process_samples(&sample_buffer);
+                        sample_buffer.clear();
+                    }
+                }
+                Err(_) => {
+                    // Timeout or disconnected - check if we should stop
+                    if AUDIO_SHOULD_STOP.load(Ordering::Relaxed) {
+                        break;
+                    }
+                }
             }
         }
 
@@ -146,6 +187,13 @@ pub fn start_file_audio(
         };
 
         loop {
+            // Check if we should stop
+            if AUDIO_SHOULD_STOP.load(Ordering::Relaxed) {
+                debug!("Audio playback stopping - stopping sink");
+                sink.stop();
+                break;
+            }
+            
             let file = match File::open(&file_path_owned) {
                 Ok(f) => f,
                 Err(_) => break,
@@ -170,11 +218,27 @@ pub fn start_file_audio(
             };
 
             sink.append(tapped);
-            sink.sleep_until_end();
+            
+            // Sleep in small intervals to allow responsive stopping
+            while !sink.empty() {
+                if AUDIO_SHOULD_STOP.load(Ordering::Relaxed) {
+                    debug!("Stop requested during playback - stopping sink");
+                    sink.stop();
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            
+            // Check again before looping
+            if AUDIO_SHOULD_STOP.load(Ordering::Relaxed) {
+                sink.stop();
+                break;
+            }
 
             trace!("Audio playback loop completed, restarting");
         }
 
+        AUDIO_RUNNING.store(false, Ordering::Relaxed);
         debug!("Audio playback thread ended");
     });
 

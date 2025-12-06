@@ -102,7 +102,7 @@ pub fn start_input_fft(audio: Arc<AudioState>) -> Option<cpal::Stream> {
 
         loop {
             // Fill tmp with mono samples
-            for i in 0..FFT_LEN {
+            for sample in tmp.iter_mut().take(FFT_LEN) {
                 // Accumulate across channels -> mono
                 let mut acc = 0.0f32;
                 for _c in 0..channels {
@@ -112,7 +112,7 @@ pub fn start_input_fft(audio: Arc<AudioState>) -> Option<cpal::Stream> {
                     }; // stream ended
                     acc += v;
                 }
-                tmp[i] = acc / channels as f32;
+                *sample = acc / channels as f32;
             }
 
             // Apply window and copy to complex buffer
@@ -187,7 +187,7 @@ pub fn start_input_fft(audio: Arc<AudioState>) -> Option<cpal::Stream> {
             
             // Debug print every 30 frames (~1 second at typical rates)
             frame_count += 1;
-            if frame_count % 30 == 0 {
+            if frame_count.is_multiple_of(30) {
                 debug!("Audio bands - bass: {:.3}, mid: {:.3}, high: {:.3}", sb, sm, sh);
             }
         }
@@ -227,7 +227,7 @@ fn build_input_stream_f32(
         config,
         move |data: &[f32], _| {
             sample_count += data.len();
-            if sample_count % 48000 == 0 {
+            if sample_count.is_multiple_of(48000) {
                 debug!("Received {} audio samples", sample_count);
             }
             for frame in data.chunks_exact(channels) {

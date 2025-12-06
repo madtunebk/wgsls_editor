@@ -45,3 +45,4 @@ CHANGELOG.md
 # TempRS integration (separate repos)
 TempRS/
 .TMRS/
+.temprs_reference

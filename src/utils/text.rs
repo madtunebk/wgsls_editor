@@ -20,12 +20,10 @@ pub fn byte_index_from_char_index(s: &str, char_index: usize) -> usize {
     if char_index == 0 {
         return 0;
     }
-    let mut count = 0usize;
-    for (i, _) in s.char_indices() {
+    for (count, (i, _)) in s.char_indices().enumerate() {
         if count == char_index {
             return i;
         }
-        count += 1;
     }
     s.len()
 }

@@ -3,6 +3,7 @@ pub mod audio_analyzer;
 pub mod audio_file;
 pub mod errors;
 pub mod fonts;
+pub mod image_loader;
 pub mod monitors;
 pub mod multi_buffer_pipeline;
 pub mod notification;

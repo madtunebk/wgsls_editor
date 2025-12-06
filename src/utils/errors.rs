@@ -3,6 +3,7 @@ use std::fmt;
 
 /// Error type for shader compilation and pipeline errors
 #[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)]
 pub enum ShaderError {
     CompilationError(String),
     ValidationError(String),

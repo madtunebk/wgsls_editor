@@ -41,9 +41,13 @@ pub struct TopApp {
     debug_mid: f32,
     debug_high: f32,
     audio_file_path: Option<String>,
+    image_file_path: Option<String>,
 
     // Notifications
     notification_mgr: NotificationManager,
+
+    // Preview overlay state
+    _preview_overlay_hovered: bool,
 }
 
 impl TopApp {
@@ -53,50 +57,58 @@ impl TopApp {
         // Initialize unified buffer system - single source of truth
         let mut buffers = HashMap::with_capacity(5);
 
-        // MainImage with default shader
+        // Load default preset JSON to get initial buffer content
+        let default_json = include_str!("../assets/shards/default.json");
+        let default_shader = ShaderJson::from_json(default_json)
+            .expect("Failed to parse default.json - this should never fail");
+
+        // MainImage with default shader from JSON
         buffers.insert(
             BufferKind::MainImage,
             ShaderBuffer::new(
                 BufferKind::MainImage,
-                DEFAULT_VERTEX.to_string(),
-                DEFAULT_FRAGMENT.to_string(),
+                default_shader.vertex.clone().unwrap_or_else(|| DEFAULT_VERTEX.to_string()),
+                default_shader.fragment.clone(),
             ),
         );
 
-        // Buffers A-D with demo shaders
+        // Buffer A from JSON
         buffers.insert(
             BufferKind::BufferA,
             ShaderBuffer::new(
                 BufferKind::BufferA,
                 DEFAULT_VERTEX.to_string(),
-                include_str!("../assets/shards/buffer_a_demo.frag").to_string(),
+                default_shader.buffer_a.clone().unwrap_or_else(|| "// Buffer A\n".to_string()),
             ),
         );
 
+        // Buffer B from JSON
         buffers.insert(
             BufferKind::BufferB,
             ShaderBuffer::new(
                 BufferKind::BufferB,
                 DEFAULT_VERTEX.to_string(),
-                include_str!("../assets/shards/buffer_b_demo.frag").to_string(),
+                default_shader.buffer_b.clone().unwrap_or_else(|| "// Buffer B\n".to_string()),
             ),
         );
 
+        // Buffer C from JSON
         buffers.insert(
             BufferKind::BufferC,
             ShaderBuffer::new(
                 BufferKind::BufferC,
                 DEFAULT_VERTEX.to_string(),
-                include_str!("../assets/shards/buffer_c_demo.frag").to_string(),
+                default_shader.buffer_c.clone().unwrap_or_else(|| "// Buffer C\n".to_string()),
             ),
         );
 
+        // Buffer D from JSON
         buffers.insert(
             BufferKind::BufferD,
             ShaderBuffer::new(
                 BufferKind::BufferD,
                 DEFAULT_VERTEX.to_string(),
-                include_str!("../assets/shards/buffer_d_demo.frag").to_string(),
+                default_shader.buffer_d.clone().unwrap_or_else(|| "// Buffer D\n".to_string()),
             ),
         );
 
@@ -124,8 +136,11 @@ impl TopApp {
             debug_mid: 0.0,
             debug_high: 0.0,
             audio_file_path: None,
+            image_file_path: None,
 
             notification_mgr: NotificationManager::default(),
+
+            _preview_overlay_hovered: false,
         };
 
         // Load default shader into MainImage on startup
@@ -134,12 +149,14 @@ impl TopApp {
         // Compile initial shader
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             let device = render_state.device.clone();
+            let queue = render_state.queue.clone();
             let format = render_state.target_format;
             app.target_format = Some(format);
 
             let sources = app.get_all_buffer_sources();
+            let image_path = app.image_file_path.as_deref();
 
-            match MultiPassPipelines::new(&device, format, DEFAULT_BUFFER_RESOLUTION, &sources) {
+            match MultiPassPipelines::new(&device, &queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, image_path) {
                 Ok(pipeline) => {
                     *app.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
                 }
@@ -172,6 +189,7 @@ impl eframe::App for TopApp {
 
             if let Some(render_state) = frame.wgpu_render_state() {
                 let device = &render_state.device;
+                let queue = &render_state.queue;
                 let format = render_state.target_format;
 
                 // Build sources map for all buffers with auto-injected boilerplate
@@ -250,10 +268,9 @@ impl eframe::App for TopApp {
                 }
 
                 // Ensure MainImage exists
-                if !sources.contains_key(&BufferKind::MainImage) {
-                    let default_combined = format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT);
-                    sources.insert(BufferKind::MainImage, default_combined);
-                }
+                sources.entry(BufferKind::MainImage).or_insert_with(|| {
+                    format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT)
+                });
 
                 // Check if validation failed
                 if let Some(err) = validation_error {
@@ -267,10 +284,12 @@ impl eframe::App for TopApp {
 
                 log::debug!("[TopApp] Compiling multi-pass pipeline with {} buffers", sources.len());
 
+                let image_path = self.image_file_path.as_deref();
+
                 // Wrap pipeline creation in panic catcher to prevent crashes
                 // Use catch_panic_mut since WGPU Device is not UnwindSafe
                 let result = catch_panic_mut(|| {
-                    MultiPassPipelines::new(device, format, DEFAULT_BUFFER_RESOLUTION, &sources)
+                    MultiPassPipelines::new(device, queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, image_path)
                 });
 
                 match result {
@@ -343,6 +362,7 @@ impl eframe::App for TopApp {
                 ctx,
                 &mut self.show_preset_menu,
                 &self.audio_file_path,
+                &self.image_file_path,
                 &mut self.debug_audio,
                 &mut self.debug_bass,
                 &mut self.debug_mid,
@@ -359,8 +379,14 @@ impl eframe::App for TopApp {
                 shader_properties::ShaderPropertiesAction::LoadAudioFile(path) => {
                     self.load_audio_file(path);
                 }
+                shader_properties::ShaderPropertiesAction::LoadImageFile(path) => {
+                    self.load_image_file(path);
+                }
                 shader_properties::ShaderPropertiesAction::ExportShard => {
                     self.export_shard();
+                }
+                shader_properties::ShaderPropertiesAction::ImportShard => {
+                    self.import_shard();
                 }
                 shader_properties::ShaderPropertiesAction::None => {}
             }
@@ -620,6 +646,181 @@ impl TopApp {
             ui.painter()
                 .add(egui_wgpu::Callback::new_paint_callback(rect, cb));
         }
+
+        // Overlay controls - show on hover with stable state to prevent flickering
+        let pointer_pos = ui.ctx().pointer_hover_pos().unwrap_or_default();
+        let preview_hovered = rect.contains(pointer_pos);
+
+        // Calculate overlay rect early to check hover
+        let overlay_rect = self.calculate_overlay_rect(rect);
+        let overlay_hovered = overlay_rect.contains(pointer_pos);
+
+        // Keep overlay visible if either area is hovered (prevents flicker)
+        if preview_hovered || overlay_hovered {
+            self.render_preview_overlay(ui, rect);
+        }
+    }
+
+    fn calculate_overlay_rect(&self, preview_rect: egui::Rect) -> egui::Rect {
+        let icon_size = 32.0;  // Match editor button size (gear_size)
+        let spacing = 8.0;     // Match spacing between icons
+
+        // Calculate width for 3 icons in a vertical stack (like settings buttons)
+        let overlay_width = icon_size;
+        let overlay_height = icon_size * 3.0 + spacing * 2.0;
+
+        // Position at bottom-right, matching the top-right settings button position
+        let overlay_pos = egui::pos2(
+            preview_rect.right() - icon_size - 8.0,  // 8.0 matches gear_pos offset
+            preview_rect.bottom() - overlay_height - 8.0,  // 8.0 matches gear_pos offset
+        );
+
+        egui::Rect::from_min_size(overlay_pos, egui::vec2(overlay_width, overlay_height))
+    }
+
+    fn render_preview_overlay(&mut self, ui: &mut egui::Ui, preview_rect: egui::Rect) {
+        // Use helper method for consistent rect calculation
+        let overlay_rect = self.calculate_overlay_rect(preview_rect);
+        let icon_size = 32.0;
+        let spacing = 8.0;
+
+        // No background/border - just floating buttons like settings gear
+        // Render icons inside the overlay using vertical layout
+        ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
+            ui.vertical(|ui| {
+
+                // Icon 1: Load audio file (top)
+                let audio_file_pos = egui::pos2(
+                    overlay_rect.left(),
+                    overlay_rect.top(),
+                );
+                let audio_file_rect = egui::Rect::from_min_size(
+                    audio_file_pos,
+                    egui::vec2(icon_size, icon_size),
+                );
+                let audio_file_response = ui.put(
+                    audio_file_rect,
+                    egui::Button::new(
+                        egui::RichText::new("🎵").size(16.0),
+                    )
+                    .frame(true),
+                );
+                if audio_file_response
+                    .on_hover_text("Load audio file")
+                    .clicked()
+                {
+                    self.load_audio_file_dialog();
+                }
+
+                // Icon 2: Load image (middle)
+                let image_pos = egui::pos2(
+                    overlay_rect.left(),
+                    overlay_rect.top() + icon_size + spacing,
+                );
+                let image_rect = egui::Rect::from_min_size(
+                    image_pos,
+                    egui::vec2(icon_size, icon_size),
+                );
+                let image_response = ui.put(
+                    image_rect,
+                    egui::Button::new(
+                        egui::RichText::new("🖼").size(16.0),
+                    )
+                    .frame(true),
+                );
+                if image_response
+                    .on_hover_text("Load image texture")
+                    .clicked()
+                {
+                    self.load_image_texture();
+                }
+
+                // Icon 3: Audio toggle (bottom)
+                let audio_icon = if self.audio_file_path.is_some() { "🔊" } else { "🔇" };
+                let audio_tooltip = if self.audio_file_path.is_some() {
+                    "Stop audio playback"
+                } else {
+                    "No audio loaded"
+                };
+                let audio_pos = egui::pos2(
+                    overlay_rect.left(),
+                    overlay_rect.top() + (icon_size + spacing) * 2.0,
+                );
+                let audio_rect = egui::Rect::from_min_size(
+                    audio_pos,
+                    egui::vec2(icon_size, icon_size),
+                );
+                let audio_response = ui.put(
+                    audio_rect,
+                    egui::Button::new(
+                        egui::RichText::new(audio_icon).size(16.0),
+                    )
+                    .frame(true),
+                );
+                if audio_response.clicked() && self.audio_file_path.is_some() {
+                    // Stop audio playback
+                    crate::utils::audio_file::stop_audio();
+                    self.audio_file_path = None;
+                    self.notification_mgr.success("Audio stopped");
+                    log::info!("Audio stopped");
+                }
+                audio_response.on_hover_text(audio_tooltip);
+            });
+        });
+    }
+
+    fn load_image_texture(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Image Files", &["png", "jpg", "jpeg", "bmp", "gif", "webp"])
+            .pick_file()
+        {
+            let path_str = path.to_string_lossy().to_string();
+            self.load_image_file(path_str);
+        }
+    }
+
+    fn load_image_file(&mut self, path: String) {
+        log::info!("Loading image texture: {}", path);
+
+        // Store the image file path
+        self.image_file_path = Some(path.clone());
+
+        // Trigger shader recompilation to load the new image texture
+        self.shader_needs_update.store(true, Ordering::Relaxed);
+
+        self.notification_mgr.success(format!(
+            "Image loaded: {}",
+            std::path::Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&path)
+        ));
+        
+        log::info!("Image texture will be available as iChannel0 in all shaders");
+    }
+
+    fn load_audio_file_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Audio Files", &["mp3", "wav", "ogg", "flac"])
+            .pick_file()
+        {
+            let path_str = path.to_string_lossy().to_string();
+            log::info!("Loading audio file: {}", path_str);
+
+            // Start audio playback (parameters: bass, mid, high, file_path)
+            if crate::utils::audio_file::start_file_audio(
+                self.bass_energy.clone(),
+                self.mid_energy.clone(),
+                self.high_energy.clone(),
+                &path_str,
+            ).is_some() {
+                self.audio_file_path = Some(path_str.clone());
+                self.notification_mgr.success(format!("Audio loaded: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy()));
+            } else {
+                self.notification_mgr.error("Failed to load audio file");
+            }
+        }
     }
 
     fn handle_input(&mut self, ctx: &egui::Context) {
@@ -645,6 +846,9 @@ impl TopApp {
             if i.modifiers.command && i.key_pressed(egui::Key::E) {
                 self.export_shard();
             }
+            if i.modifiers.command && i.key_pressed(egui::Key::I) {
+                self.import_shard();
+            }
         });
     }
 
@@ -658,15 +862,25 @@ impl TopApp {
     fn reset_shader(&mut self) {
         log::info!("Resetting {} to default shader", self.current_buffer.as_str());
 
+        // Load default preset JSON
+        let default_json = include_str!("../assets/shards/default.json");
+        let default_shader = match ShaderJson::from_json(default_json) {
+            Ok(s) => s,
+            Err(e) => {
+                self.notification_mgr.error(format!("Failed to load default shader: {}", e));
+                return;
+            }
+        };
+
         if let Some(buffer) = self.buffers.get_mut(&self.current_buffer) {
             buffer.set_vertex(DEFAULT_VERTEX.to_string());
 
             let default_fragment = match self.current_buffer {
-                BufferKind::MainImage => include_str!("../assets/shards/default.frag"),
-                BufferKind::BufferA => include_str!("../assets/shards/buffer_a_demo.frag"),
-                BufferKind::BufferB => include_str!("../assets/shards/buffer_b_demo.frag"),
-                BufferKind::BufferC => include_str!("../assets/shards/buffer_c_demo.frag"),
-                BufferKind::BufferD => include_str!("../assets/shards/buffer_d_demo.frag"),
+                BufferKind::MainImage => default_shader.fragment,
+                BufferKind::BufferA => default_shader.buffer_a.unwrap_or_else(|| "// Buffer A\n".to_string()),
+                BufferKind::BufferB => default_shader.buffer_b.unwrap_or_else(|| "// Buffer B\n".to_string()),
+                BufferKind::BufferC => default_shader.buffer_c.unwrap_or_else(|| "// Buffer C\n".to_string()),
+                BufferKind::BufferD => default_shader.buffer_d.unwrap_or_else(|| "// Buffer D\n".to_string()),
             };
 
             buffer.set_fragment(default_fragment.to_string());
@@ -718,7 +932,7 @@ impl TopApp {
         match result {
             Ok(Some(_)) => {
                 self.audio_file_path = Some(path.clone());
-                self.notification_mgr.success(&format!(
+                self.notification_mgr.success(format!(
                     "Audio loaded: {}",
                     std::path::Path::new(&path)
                         .file_name()
@@ -733,7 +947,7 @@ impl TopApp {
             }
             Err(panic_msg) => {
                 let formatted = format_panic_message(&panic_msg);
-                self.notification_mgr.error(&format!("Audio loading crashed: {}", formatted));
+                self.notification_mgr.error(format!("Audio loading crashed: {}", formatted));
                 log::error!("Audio loading panicked: {}", panic_msg);
             }
         }
@@ -746,30 +960,84 @@ impl TopApp {
 
         self.current_buffer = new_buffer;
         log::info!("Switched to buffer: {:?}", new_buffer);
-        self.notification_mgr.info(&format!("Switched to {}", new_buffer.as_str()));
+        self.notification_mgr.info(format!("Switched to {}", new_buffer.as_str()));
     }
 
     fn load_preset_shader(&mut self, name: &str) {
-        let preset_content = match name {
-            "default" => DEFAULT_FRAGMENT,
-            "psychedelic" => include_str!("../assets/shards/psychedelic.frag"),
-            "tunnel" => include_str!("../assets/shards/tunnel.frag"),
-            "raymarch" => include_str!("../assets/shards/raymarch.frag"),
-            "fractal" => include_str!("../assets/shards/fractal.frag"),
+        // Load JSON preset files instead of individual .frag files
+        let json_content = match name {
+            "default" => include_str!("../assets/shards/default.json"),
+            "psychedelic" => include_str!("../assets/shards/psychedelic.json"),
+            "tunnel" => include_str!("../assets/shards/tunnel.json"),
+            "raymarch" => include_str!("../assets/shards/raymarch.json"),
+            "fractal" => include_str!("../assets/shards/fractal.json"),
+            "image_demo" => include_str!("../assets/shards/image_demo.json"),
             _ => {
-                self.notification_mgr.error(&format!("Unknown preset: {}", name));
+                self.notification_mgr.error(format!("Unknown preset: {}", name));
                 return;
             }
         };
 
-        if let Some(buffer) = self.buffers.get_mut(&self.current_buffer) {
-            buffer.set_fragment(preset_content.to_string());
-            buffer.set_vertex(DEFAULT_VERTEX.to_string());
+        // Parse and load the JSON shader
+        match ShaderJson::from_json(json_content) {
+            Ok(shader_json) => {
+                self.load_shader_from_json(shader_json);
+                self.notification_mgr.success(format!("✓ Loaded preset: {}", name));
+                log::info!("Loaded preset shader: {}", name);
+            }
+            Err(e) => {
+                self.notification_mgr.error(format!("Failed to parse preset: {}", e));
+                log::error!("Failed to parse preset {}: {}", name, e);
+            }
+        }
+    }
+
+    /// Load a shader from ShaderJson into all buffers
+    fn load_shader_from_json(&mut self, shader_json: ShaderJson) {
+        // Load MainImage fragment
+        if let Some(buffer) = self.buffers.get_mut(&BufferKind::MainImage) {
+            buffer.set_fragment(shader_json.fragment.clone());
+            if let Some(vertex) = &shader_json.vertex {
+                buffer.set_vertex(vertex.clone());
+            } else {
+                buffer.set_vertex(DEFAULT_VERTEX.to_string());
+            }
         }
 
+        // Load Buffer A
+        if let Some(buffer_a) = &shader_json.buffer_a {
+            if let Some(buffer) = self.buffers.get_mut(&BufferKind::BufferA) {
+                buffer.set_fragment(buffer_a.clone());
+                buffer.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+        }
+
+        // Load Buffer B
+        if let Some(buffer_b) = &shader_json.buffer_b {
+            if let Some(buffer) = self.buffers.get_mut(&BufferKind::BufferB) {
+                buffer.set_fragment(buffer_b.clone());
+                buffer.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+        }
+
+        // Load Buffer C
+        if let Some(buffer_c) = &shader_json.buffer_c {
+            if let Some(buffer) = self.buffers.get_mut(&BufferKind::BufferC) {
+                buffer.set_fragment(buffer_c.clone());
+                buffer.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+        }
+
+        // Load Buffer D
+        if let Some(buffer_d) = &shader_json.buffer_d {
+            if let Some(buffer) = self.buffers.get_mut(&BufferKind::BufferD) {
+                buffer.set_fragment(buffer_d.clone());
+                buffer.set_vertex(DEFAULT_VERTEX.to_string());
+            }
+        }
+
+        // Apply the shader pipeline
         self.apply_shader();
-        self.notification_mgr.success(&format!("Loaded preset: {}", name));
-        log::info!("Loaded preset shader: {}", name);
     }
 
     fn export_shard(&mut self) {
@@ -810,7 +1078,7 @@ impl TopApp {
         // Get MainImage fragment (required)
         if let Some(buffer) = self.buffers.get(&BufferKind::MainImage) {
             let (_, fragment) = buffer.get_shaders();
-            shader_json["fragment"] = json!(ShaderJson::encode_to_base64(&fragment));
+            shader_json["fragment"] = json!(ShaderJson::encode_to_base64(fragment));
         } else {
             self.notification_mgr.error("MainImage is required for export");
             return;
@@ -821,7 +1089,7 @@ impl TopApp {
             let (vertex, _) = buffer.get_shaders();
             let default_vertex = STANDARD_VERTEX.trim();
             if vertex.trim() != default_vertex {
-                shader_json["vertex"] = json!(ShaderJson::encode_to_base64(&vertex));
+                shader_json["vertex"] = json!(ShaderJson::encode_to_base64(vertex));
             }
         }
 
@@ -837,8 +1105,8 @@ impl TopApp {
                 let trimmed = fragment.trim();
 
                 // Skip empty or comment-only buffers
-                if !trimmed.is_empty() && !(trimmed.starts_with("//") && trimmed.lines().count() == 1) {
-                    shader_json[json_key] = json!(ShaderJson::encode_to_base64(&fragment));
+                if !(trimmed.is_empty() || trimmed.starts_with("//") && trimmed.lines().count() == 1) {
+                    shader_json[json_key] = json!(ShaderJson::encode_to_base64(fragment));
                 }
             }
         }
@@ -847,7 +1115,7 @@ impl TopApp {
         let json_content = match serde_json::to_string_pretty(&shader_json) {
             Ok(content) => content,
             Err(e) => {
-                self.notification_mgr.error(&format!("JSON serialization failed: {}", e));
+                self.notification_mgr.error(format!("JSON serialization failed: {}", e));
                 log::error!("Failed to serialize JSON: {}", e);
                 return;
             }
@@ -870,8 +1138,51 @@ impl TopApp {
                 }
             }
             Err(e) => {
-                self.notification_mgr.error(&format!("Export failed: {}", e));
+                self.notification_mgr.error(format!("Export failed: {}", e));
                 log::error!("Failed to create file: {:?}, error: {}", file_path, e);
+            }
+        }
+    }
+
+    fn import_shard(&mut self) {
+        // Default to cache/TempRS/shaders/ folder (same as export)
+        let cache_shader_dir = dirs::cache_dir()
+            .map(|p| p.join("TempRS").join("shaders"))
+            .filter(|p| p.exists());
+
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("JSON Shader", &["json"])
+            .set_file_name("shader.json");
+
+        if let Some(dir) = cache_shader_dir {
+            dialog = dialog.set_directory(dir);
+        }
+
+        let file_path = match dialog.pick_file() {
+            Some(path) => path,
+            None => return,
+        };
+
+        // Read the file
+        let json_content = match std::fs::read_to_string(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                self.notification_mgr.error(format!("Failed to read file: {}", e));
+                log::error!("Failed to read file {:?}: {}", file_path, e);
+                return;
+            }
+        };
+
+        // Parse and load the JSON shader
+        match ShaderJson::from_json(&json_content) {
+            Ok(shader_json) => {
+                self.load_shader_from_json(shader_json);
+                self.notification_mgr.success("✓ Shader imported successfully!");
+                log::info!("Shader imported from: {:?}", file_path);
+            }
+            Err(e) => {
+                self.notification_mgr.error(format!("Failed to parse JSON: {}", e));
+                log::error!("Failed to parse shader JSON: {}", e);
             }
         }
     }

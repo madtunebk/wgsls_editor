@@ -5,15 +5,19 @@ use std::sync::{Arc, Mutex};
 pub enum ShaderPropertiesAction {
     LoadPreset(String),
     LoadAudioFile(String),
+    LoadImageFile(String),
     ExportShard,
+    ImportShard,
     None,
 }
 
 /// Render the Shader Properties window
+#[allow(clippy::too_many_arguments)]
 pub fn render(
     ctx: &egui::Context,
     show_window: &mut bool,
     audio_file_path: &Option<String>,
+    image_file_path: &Option<String>,
     debug_audio: &mut bool,
     debug_bass: &mut f32,
     debug_mid: &mut f32,
@@ -44,39 +48,45 @@ pub fn render(
                 .corner_radius(6.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("🎨 Shader Presets").size(16.0).strong());
+                    ui.label(egui::RichText::new("Shader Presets").size(16.0).strong());
                     ui.add_space(8.0);
 
                     let button_size = egui::vec2(ui.available_width(), 32.0);
 
                     if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("📊 Default (Audio Visualizer)").size(13.0)
+                        egui::RichText::new("Default (Audio Visualizer)").size(13.0)
                     )).clicked() {
                         action = ShaderPropertiesAction::LoadPreset("default".to_string());
                     }
 
                     if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("🌀 Psychedelic Spiral").size(13.0)
+                        egui::RichText::new("Psychedelic Spiral").size(13.0)
                     )).clicked() {
                         action = ShaderPropertiesAction::LoadPreset("psychedelic".to_string());
                     }
 
                     if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("🕳️ Infinite Tunnel").size(13.0)
+                        egui::RichText::new("Infinite Tunnel").size(13.0)
                     )).clicked() {
                         action = ShaderPropertiesAction::LoadPreset("tunnel".to_string());
                     }
 
                     if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("📦 Raymarched Boxes").size(13.0)
+                        egui::RichText::new("Raymarched Boxes").size(13.0)
                     )).clicked() {
                         action = ShaderPropertiesAction::LoadPreset("raymarch".to_string());
                     }
 
                     if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("🌌 Julia Set Fractal").size(13.0)
+                        egui::RichText::new("Julia Set Fractal").size(13.0)
                     )).clicked() {
                         action = ShaderPropertiesAction::LoadPreset("fractal".to_string());
+                    }
+
+                    if ui.add_sized(button_size, egui::Button::new(
+                        egui::RichText::new("Image Demo").size(13.0)
+                    )).clicked() {
+                        action = ShaderPropertiesAction::LoadPreset("image_demo".to_string());
                     }
                 });
             });
@@ -91,7 +101,7 @@ pub fn render(
                 .corner_radius(6.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("🎵 Audio").size(16.0).strong());
+                    ui.label(egui::RichText::new("Audio").size(16.0).strong());
                     ui.add_space(8.0);
 
                     // Audio file display
@@ -124,7 +134,7 @@ pub fn render(
                     ui.add_space(8.0);
 
                     if ui.add_sized([ui.available_width(), 30.0], egui::Button::new(
-                        egui::RichText::new("📁 Load Audio File...").size(13.0)
+                        egui::RichText::new("Load Audio File...").size(13.0)
                     )).clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Audio", &["mp3", "wav", "ogg", "flac"])
@@ -139,7 +149,7 @@ pub fn render(
                     ui.add_space(8.0);
 
                     ui.checkbox(debug_audio,
-                        egui::RichText::new("🎛️ Debug Mode (Manual Control)").size(12.0));
+                        egui::RichText::new("Debug Mode (Manual Control)").size(12.0));
 
                     ui.add_space(8.0);
 
@@ -147,11 +157,11 @@ pub fn render(
                         ui.label(egui::RichText::new("Manual Controls:").strong().size(12.0));
                         ui.add_space(4.0);
                         ui.add(egui::Slider::new(debug_bass, 0.0..=1.0)
-                            .text("🔊 Bass").show_value(true));
+                            .text("Bass").show_value(true));
                         ui.add(egui::Slider::new(debug_mid, 0.0..=1.0)
-                            .text("🎵 Mid").show_value(true));
+                            .text("Mid").show_value(true));
                         ui.add(egui::Slider::new(debug_high, 0.0..=1.0)
-                            .text("🎶 High").show_value(true));
+                            .text("High").show_value(true));
                     } else {
                         ui.label(egui::RichText::new("Live Audio Levels:").strong().size(12.0));
                         ui.add_space(4.0);
@@ -161,19 +171,19 @@ pub fn render(
                         let high = *high_energy.lock().unwrap();
 
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("🔊").size(14.0));
+                            ui.label(egui::RichText::new("Bass").size(12.0).strong());
                             ui.add(egui::ProgressBar::new(bass)
-                                .text(format!("Bass {:.2}", bass))
+                                .text(format!("{:.2}", bass))
                                 .desired_width(ui.available_width()));
                         });
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("🎵").size(14.0));
+                            ui.label(egui::RichText::new("Mid").size(12.0).strong());
                             ui.add(egui::ProgressBar::new(mid)
-                                .text(format!("Mid  {:.2}", mid))
+                                .text(format!("{:.2}", mid))
                                 .desired_width(ui.available_width()));
                         });
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("🎶").size(14.0));
+                            ui.label(egui::RichText::new("High").size(12.0).strong());
                             ui.add(egui::ProgressBar::new(high)
                                 .text(format!("High {:.2}", high))
                                 .desired_width(ui.available_width()));
@@ -182,26 +192,96 @@ pub fn render(
                     });
             });
 
-            ui.add_space(12.0);            // Export Section with styled frame
-            ui.push_id("export_section", |ui| {
+            ui.add_space(12.0);
+
+            // Image Section with styled frame
+            ui.push_id("image_section", |ui| {
             egui::Frame::group(ui.style())
                 .fill(egui::Color32::from_rgb(25, 25, 30))
                 .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70)))
                 .corner_radius(6.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("💾 Export").size(16.0).strong());
+                    ui.label(egui::RichText::new("Image Texture").size(16.0).strong());
+                    ui.add_space(8.0);
+
+                    // Image file display
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("File:").strong().size(12.0));
+                        ui.add_space(4.0);
+
+                        let file_text = if let Some(path) = image_file_path {
+                            std::path::Path::new(path)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("Unknown")
+                                .to_string()
+                        } else {
+                            "No image loaded".to_string()
+                        };
+
+                        ui.label(
+                            egui::RichText::new(file_text)
+                                .monospace()
+                                .size(11.0)
+                                .color(if image_file_path.is_some() {
+                                    egui::Color32::from_rgb(120, 220, 120)
+                                } else {
+                                    egui::Color32::from_rgb(140, 140, 150)
+                                })
+                        );
+                    });
+
+                    ui.add_space(8.0);
+
+                    if ui.add_sized([ui.available_width(), 30.0], egui::Button::new(
+                        egui::RichText::new("Load Image File...").size(13.0)
+                    )).clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "gif", "webp"])
+                            .pick_file()
+                        {
+                            action = ShaderPropertiesAction::LoadImageFile(path.to_string_lossy().to_string());
+                        }
+                    }
+                });
+            });
+
+            ui.add_space(12.0);            // Import/Export Section with styled frame
+            ui.push_id("import_export_section", |ui| {
+            egui::Frame::group(ui.style())
+                .fill(egui::Color32::from_rgb(25, 25, 30))
+                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70)))
+                .corner_radius(6.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("Import/Export").size(16.0).strong());
                     ui.add_space(8.0);
 
                     if ui.add_sized([ui.available_width(), 32.0], egui::Button::new(
-                        egui::RichText::new("📦 Export Shard...").size(13.0)
+                        egui::RichText::new("Import Shard...").size(13.0)
+                    )).clicked() {
+                        action = ShaderPropertiesAction::ImportShard;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("Load shader from JSON file (Ctrl+I)")
+                            .size(10.0)
+                            .color(egui::Color32::from_rgb(140, 140, 150))
+                    );
+
+                    ui.add_space(8.0);
+
+                    if ui.add_sized([ui.available_width(), 32.0], egui::Button::new(
+                        egui::RichText::new("Export Shard...").size(13.0)
                     )).clicked() {
                         action = ShaderPropertiesAction::ExportShard;
                     }
 
                     ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("Save all buffers to a single .wgsls file")
+                        egui::RichText::new("Save all buffers to JSON file (Ctrl+E)")
                             .size(10.0)
                             .color(egui::Color32::from_rgb(140, 140, 150))
                     );
@@ -212,7 +292,7 @@ pub fn render(
 
             ui.vertical_centered(|ui| {
                 if ui.add_sized([120.0, 36.0], egui::Button::new(
-                    egui::RichText::new("✓ Close").size(15.0).strong()
+                    egui::RichText::new("Close").size(15.0).strong()
                 )).clicked() {
                     close_requested = true;
                 }

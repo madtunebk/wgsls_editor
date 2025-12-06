@@ -23,6 +23,7 @@ rodio = "0.17"
 rfd = "0.15"
 chrono = "0.4"
 dirs = "5.0"
+image = "0.25"
 
 [features]
 default = ["code_editor"]

@@ -91,9 +91,8 @@ impl ShaderJson {
         let boilerplate = generate_boilerplate();
 
         // Vertex shader (use provided or default)
-        let vertex_shader = self.vertex.as_ref()
-            .map(|v| v.clone())
-            .unwrap_or_else(|| generate_default_vertex());
+        let vertex_shader = self.vertex.clone()
+            .unwrap_or_else(generate_default_vertex);
 
         // Process BufferA
         if let Some(buffer_a_code) = &self.buffer_a {

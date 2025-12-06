@@ -4,11 +4,24 @@
 //! All shader-related constants are defined here once to avoid duplication
 //! across the codebase.
 
-/// Default vertex shader code
-pub const DEFAULT_VERTEX: &str = include_str!("../assets/shards/default.vert");
+/// Default vertex shader code (standard full-screen triangle)
+pub const DEFAULT_VERTEX: &str = r#"@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
+    var out: VSOut;
+    let x = f32((vi & 1u) << 2u);
+    let y = f32((vi & 2u) << 1u);
+    out.pos = vec4<f32>(x - 1.0, 1.0 - y, 0.0, 1.0);
+    out.uv = vec2<f32>(x * 0.5, y * 0.5);
+    return out;
+}
+"#;
 
-/// Default fragment shader code
-pub const DEFAULT_FRAGMENT: &str = include_str!("../assets/shards/default.frag");
+/// Default fragment shader code (simple gradient for fallback)
+pub const DEFAULT_FRAGMENT: &str = r#"@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
+    return vec4<f32>(in.uv.x, in.uv.y, 0.5, 1.0);
+}
+"#;
 
 /// Standard boilerplate auto-injected into every shader
 ///
@@ -34,6 +47,13 @@ struct VSOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
 }
+
+// User-loaded image texture (iChannel0 - ShaderToy compatible)
+@group(1) @binding(8)
+var iChannel0: texture_2d<f32>;
+
+@group(1) @binding(9)
+var iChannel0Sampler: sampler;
 "#;
 
 /// Standard vertex shader auto-injected if user doesn't provide one

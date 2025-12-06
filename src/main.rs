@@ -34,16 +34,16 @@ fn main() {
 
     log::info!("Application starting...");
 
-    let mut native_options = NativeOptions::default();
-    native_options.renderer = eframe::Renderer::Wgpu;
-    
-    // Configure WGPU to handle errors gracefully instead of panicking
-    native_options.wgpu_options = eframe::egui_wgpu::WgpuConfiguration {
-        // Use a custom error handler that logs instead of panicking
-        on_surface_error: std::sync::Arc::new(|err| {
-            log::error!("WGPU surface error: {}", err);
-            eframe::egui_wgpu::SurfaceErrorAction::SkipFrame
-        }),
+    let mut native_options = NativeOptions {
+        renderer: eframe::Renderer::Wgpu,
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            // Use a custom error handler that logs instead of panicking
+            on_surface_error: std::sync::Arc::new(|err| {
+                log::error!("WGPU surface error: {}", err);
+                eframe::egui_wgpu::SurfaceErrorAction::SkipFrame
+            }),
+            ..Default::default()
+        },
         ..Default::default()
     };
 

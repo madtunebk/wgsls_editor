@@ -65,7 +65,8 @@ impl ShaderBuffer {
     }
 
     /// Get the buffer kind
-    pub fn kind(&self) -> BufferKind {
+    #[allow(dead_code)]
+    pub fn _kind(&self) -> BufferKind {
         self.kind
     }
 }
