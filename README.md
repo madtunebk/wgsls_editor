@@ -18,6 +18,8 @@ A modern WGSL shader editor built with Rust and egui, featuring real-time multi-
 - 🎭 **Custom Themes** - Dark theme optimized for shader development
 - 📝 **Preset Shaders** - Built-in examples: psychedelic, tunnel, raymarch, fractal
 - 💾 **State Persistence** - Auto-saves editor state between sessions
+- 📦 **Import/Export** - Save and share shaders as JSON with base64 encoding support
+- 🔔 **Smart Notifications** - Toast notifications with auto-dismiss and error persistence
 
 ## Prerequisites
 
@@ -185,6 +187,10 @@ cargo clippy --all-targets -- -D warnings
 │   │   ├── fonts.rs         # Font registration
 │   │   ├── monitors.rs      # Monitor detection
 │   │   ├── multi_buffer_pipeline.rs # Multi-pass rendering pipeline
+│   │   ├── shader_json.rs   # Shader import/export (JSON + base64)
+│   │   ├── shader_constants.rs # WGSL constants and boilerplate
+│   │   ├── notification.rs  # Smart notification system
+│   │   ├── panic_handler.rs # Global panic handler
 │   │   ├── text.rs          # Text utilities
 │   │   ├── theme.rs         # UI theming
 │   │   ├── toast.rs         # Toast notifications
@@ -230,9 +236,35 @@ Each buffer has its own fragment shader. Switch between tabs to edit different p
 ### Keyboard Shortcuts
 
 - `Ctrl+Enter` - Apply shader changes (compile pipeline)
+- `Ctrl+E` - Export shader to JSON file
+- `Ctrl+S` - Save current shader state
 - `Ctrl++` / `Ctrl+-` - Increase/decrease editor font size
 - `Ctrl+0` - Reset font size to default
 - `Ctrl+,` - Open settings menu
+
+### Import/Export
+
+**Export Shader:**
+1. Click "Shader Properties" → "Export Shard" or press `Ctrl+E`
+2. Saves all buffers (MainImage + A-D) as JSON
+3. Supports base64 encoding for safe text transport
+
+**JSON Format:**
+```json
+{
+  "version": "1.0",
+  "encoding": "base64",
+  "fragment": "base64_encoded_main_image_shader",
+  "buffer_a": "base64_encoded_buffer_a_shader",
+  "buffer_b": "base64_encoded_buffer_b_shader"
+}
+```
+
+**Import Shader:**
+- Load JSON files with automatic base64 decoding
+- Supports both plain text and encoded formats
+- Validates shader structure before import
+
 ## Shader Uniforms
 
 Access these in your fragment shader via the auto-injected `uniforms` struct:
@@ -280,6 +312,8 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
 - **rustfft** (6.2) - FFT implementation
 - **rodio** (0.17) - Audio playback
 - **serde/serde_json** - Serialization
+- **base64** (0.22) - Base64 encoding for shader export
+- **dirs** (5.0) - Platform-specific directories
 - **regex** (1.10) - Pattern matching
 
 ## Contributing
@@ -304,6 +338,10 @@ MIT License - see LICENSE file for details
 - [x] Multi-pass shader support (MainImage + 4 buffers)
 - [x] Shader presets library (psychedelic, tunnel, raymarch, fractal)
 - [x] Auto-injection of uniforms and vertex shaders
+- [x] Import/Export shaders as JSON with base64 encoding
+- [x] Smart notification system with auto-dismiss
+- [x] Global panic handler for graceful error recovery
+- [ ] Import functionality (JSON → editor)
 - [ ] Export shader as image/video
 - [ ] Texture/image inputs
 - [ ] Mouse input uniforms

@@ -1,4 +1,5 @@
 //! Notification and Error Handling System
+#![allow(dead_code)]
 //!
 //! Provides user-facing notifications for success, errors, and info messages.
 //! Replaces the old "toast" terminology with clearer "notification" naming.

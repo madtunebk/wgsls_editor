@@ -11,6 +11,7 @@ egui-wgpu = "0.33"
 bytemuck = "1.16"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+base64 = "0.22.1"
 log = "0.4"
 env_logger = "0.10"
 type-map = "0.4"
@@ -21,6 +22,7 @@ naga = { version = "27", features = ["wgsl-in"] }
 rodio = "0.17"
 rfd = "0.15"
 chrono = "0.4"
+dirs = "5.0"
 
 [features]
 default = ["code_editor"]

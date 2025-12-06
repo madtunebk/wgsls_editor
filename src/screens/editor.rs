@@ -7,9 +7,9 @@ use crate::screens::shader_buffer::ShaderBuffer;
 use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
     catch_panic_mut, format_panic_message, format_shader_error, validate_shader, BufferKind,
-    MultiPassCallback, MultiPassPipelines, NotificationManager, ShaderError, DEFAULT_FONT_SIZE,
-    DEFAULT_FRAGMENT, DEFAULT_VERTEX, SHADER_BOILERPLATE, STANDARD_VERTEX,
-    DEFAULT_BUFFER_RESOLUTION, TEXTURE_BINDINGS,
+    MultiPassCallback, MultiPassPipelines, NotificationManager, ShaderError, ShaderJson,
+    DEFAULT_FONT_SIZE, DEFAULT_FRAGMENT, DEFAULT_VERTEX, SHADER_BOILERPLATE, STANDARD_VERTEX,
+    DEFAULT_BUFFER_RESOLUTION,
 };
 
 pub struct TopApp {
@@ -774,18 +774,24 @@ impl TopApp {
 
     fn export_shard(&mut self) {
         use std::io::Write;
+        use serde_json::json;
 
-        // Default to .TMRS/shaders/ folder
-        let default_dir = std::env::current_dir()
-            .ok()
-            .map(|p| p.join(".TMRS/shaders"))
-            .filter(|p| p.exists());
+        // Default to cache/TempRS/shaders/ folder (where player looks for shaders)
+        let cache_shader_dir = dirs::cache_dir()
+            .map(|p| p.join("TempRS").join("shaders"))
+            .filter(|p| {
+                // Create directory if it doesn't exist
+                if !p.exists() {
+                    let _ = std::fs::create_dir_all(p);
+                }
+                p.exists()
+            });
 
         let mut dialog = rfd::FileDialog::new()
-            .add_filter("WGSLS Shader", &["wgsls"])
-            .set_file_name("shader.wgsls");
+            .add_filter("JSON Shader", &["json"])
+            .set_file_name("shader.json");
 
-        if let Some(dir) = default_dir {
+        if let Some(dir) = cache_shader_dir {
             dialog = dialog.set_directory(dir);
         }
 
@@ -794,72 +800,69 @@ impl TopApp {
             None => return,
         };
 
-        let mut content = String::new();
+        // Build JSON object with base64-encoded shaders
+        let mut shader_json = json!({
+            "version": "1.0",
+            "exported_at": chrono::Local::now().to_rfc3339(),
+            "encoding": "base64",
+        });
 
-        // Minimal header
-        content.push_str(&format!("// Exported: {}\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+        // Get MainImage fragment (required)
+        if let Some(buffer) = self.buffers.get(&BufferKind::MainImage) {
+            let (_, fragment) = buffer.get_shaders();
+            shader_json["fragment"] = json!(ShaderJson::encode_to_base64(&fragment));
+        } else {
+            self.notification_mgr.error("MainImage is required for export");
+            return;
+        }
 
-        // Export boilerplate (structs and uniforms)
-        content.push_str("// BOILERPLATE\n");
-        content.push_str(SHADER_BOILERPLATE);
-        content.push_str("\n");
-
-        // Export texture bindings (for multi-pass shaders)
-        content.push_str("// TEXTURE BINDINGS\n");
-        content.push_str(TEXTURE_BINDINGS);
-        content.push_str("\n");
-
-        // Export shared vertex shader
-        content.push_str("// VERTEX\n");
+        // Add vertex shader if customized (optional)
         if let Some(buffer) = self.buffers.get(&BufferKind::MainImage) {
             let (vertex, _) = buffer.get_shaders();
-            content.push_str(vertex);
-            if !vertex.ends_with('\n') {
-                content.push('\n');
+            let default_vertex = STANDARD_VERTEX.trim();
+            if vertex.trim() != default_vertex {
+                shader_json["vertex"] = json!(ShaderJson::encode_to_base64(&vertex));
             }
         }
-        content.push('\n');
 
-        // Export all buffer fragments with unique function names
-        for kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
+        // Add buffer shaders if they have content (optional)
+        for (kind, json_key) in [
+            (BufferKind::BufferA, "buffer_a"),
+            (BufferKind::BufferB, "buffer_b"),
+            (BufferKind::BufferC, "buffer_c"),
+            (BufferKind::BufferD, "buffer_d"),
+        ] {
             if let Some(buffer) = self.buffers.get(&kind) {
                 let (_, fragment) = buffer.get_shaders();
                 let trimmed = fragment.trim();
 
-                // Skip empty buffers
-                if trimmed.is_empty() || trimmed.starts_with("//") && trimmed.lines().count() == 1 {
-                    continue;
+                // Skip empty or comment-only buffers
+                if !trimmed.is_empty() && !(trimmed.starts_with("//") && trimmed.lines().count() == 1) {
+                    shader_json[json_key] = json!(ShaderJson::encode_to_base64(&fragment));
                 }
-
-                content.push_str(&format!("// {}\n", kind.as_str().to_uppercase()));
-
-                // Rename fs_main to unique names to avoid redefinition errors
-                let renamed_fragment = match kind {
-                    BufferKind::MainImage => fragment.replace("fn fs_main(", "fn fs_main_image("),
-                    BufferKind::BufferA => fragment.replace("fn fs_main(", "fn fs_buffer_a("),
-                    BufferKind::BufferB => fragment.replace("fn fs_main(", "fn fs_buffer_b("),
-                    BufferKind::BufferC => fragment.replace("fn fs_main(", "fn fs_buffer_c("),
-                    BufferKind::BufferD => fragment.replace("fn fs_main(", "fn fs_buffer_d("),
-                };
-
-                content.push_str(&renamed_fragment);
-                if !renamed_fragment.ends_with('\n') {
-                    content.push('\n');
-                }
-                content.push('\n');
             }
         }
 
+        // Serialize to pretty JSON
+        let json_content = match serde_json::to_string_pretty(&shader_json) {
+            Ok(content) => content,
+            Err(e) => {
+                self.notification_mgr.error(&format!("JSON serialization failed: {}", e));
+                log::error!("Failed to serialize JSON: {}", e);
+                return;
+            }
+        };
+
         // Debug: Log exported content structure
         log::debug!("=== EXPORT DEBUG ===");
-        log::debug!("Export length: {} bytes", content.len());
-        log::debug!("Export preview (first 500 chars):\n{}", &content.chars().take(500).collect::<String>());
+        log::debug!("Export length: {} bytes", json_content.len());
+        log::debug!("Exported keys: {:?}", shader_json.as_object().map(|o| o.keys().collect::<Vec<_>>()));
         log::debug!("===================");
 
         match std::fs::File::create(&file_path) {
             Ok(mut file) => {
-                if file.write_all(content.as_bytes()).is_ok() {
-                    self.notification_mgr.success("✓ Shader exported!");
+                if file.write_all(json_content.as_bytes()).is_ok() {
+                    self.notification_mgr.success("✓ Shader exported to JSON!");
                     log::info!("Shader exported to: {:?}", file_path);
                 } else {
                     self.notification_mgr.error("Failed to write file");

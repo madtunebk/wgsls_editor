@@ -1,4 +1,5 @@
 //! WGSL Shader Validation
+#![allow(dead_code)]
 //! 
 //! Validates shaders before passing to pipeline to catch errors early
 //! and provide helpful error messages in the UI.

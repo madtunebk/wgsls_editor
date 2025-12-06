@@ -1,4 +1,5 @@
 //! Panic Handling and Recovery
+#![allow(dead_code)]
 //!
 //! Provides utilities to catch panics and convert them to recoverable errors,
 //! preventing the application from crashing.

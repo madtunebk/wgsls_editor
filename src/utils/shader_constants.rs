@@ -1,4 +1,5 @@
 //! Centralized shader constants and boilerplate code
+#![allow(dead_code)]
 //!
 //! All shader-related constants are defined here once to avoid duplication
 //! across the codebase.

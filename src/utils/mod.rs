@@ -9,6 +9,7 @@ pub mod notification;
 pub mod panic_handler;
 pub mod pipeline;
 pub mod shader_constants;
+pub mod shader_json;
 pub mod shader_validator;
 pub mod text;
 pub mod theme;
@@ -22,6 +23,7 @@ pub use multi_buffer_pipeline::{BufferKind, MultiPassCallback, MultiPassPipeline
 pub use notification::NotificationManager;
 pub use panic_handler::{catch_panic_mut, format_panic_message};
 pub use shader_constants::*;
+pub use shader_json::ShaderJson;
 pub use shader_validator::validate_shader;
 pub use theme::apply_editor_theme;
 // DEPRECATED: toast module kept for backward compatibility only

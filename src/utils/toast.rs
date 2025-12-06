@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use eframe::egui::{self, Color32, Rect, Vec2};
 use std::time::{Duration, Instant};
 
