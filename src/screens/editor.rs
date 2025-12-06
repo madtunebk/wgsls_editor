@@ -143,7 +143,7 @@ impl TopApp {
             image_file_paths: [None, None, None, None],
             selected_image_channel: 0,
 
-            gamma: Arc::new(Mutex::new(2.2)),  // Default gamma correction
+            gamma: Arc::new(Mutex::new(1.0)),  // Default: no gamma correction (matches player)
 
             notification_mgr: NotificationManager::default(),
 

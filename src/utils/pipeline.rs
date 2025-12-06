@@ -157,7 +157,7 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
             audio_mid: mid,
             audio_high: high,
             resolution,
-            gamma: 2.2,  // Default gamma correction
+            gamma: 1.0,  // No gamma correction by default
             _pad0: 0.0,
         };
 
