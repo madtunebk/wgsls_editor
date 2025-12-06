@@ -1182,6 +1182,10 @@ impl TopApp {
             }
         }
 
+        // Add gamma correction value
+        let gamma_value = *self.gamma.lock().unwrap();
+        shader_json["gamma"] = json!(gamma_value);
+
         // Serialize to pretty JSON
         let json_content = match serde_json::to_string_pretty(&shader_json) {
             Ok(content) => content,

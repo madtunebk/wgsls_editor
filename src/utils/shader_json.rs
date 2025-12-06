@@ -47,6 +47,10 @@ pub struct ShaderJson {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ichannel3: Option<String>,
+
+    /// Gamma correction value (default: 1.0 = no correction)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gamma: Option<f32>,
 }
 
 fn default_version() -> String {
