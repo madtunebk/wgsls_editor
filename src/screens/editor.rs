@@ -1075,6 +1075,12 @@ impl TopApp {
             }
         }
 
+        // Load gamma correction value
+        if let Some(gamma_value) = shader_json.gamma {
+            *self.gamma.lock().unwrap() = gamma_value;
+            log::info!("Loaded gamma correction: {}", gamma_value);
+        }
+
         // Apply the shader pipeline
         self.apply_shader();
     }

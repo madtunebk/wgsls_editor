@@ -1,6 +1,7 @@
 {
   "name": "Image Display",
   "description": "Simple shader that displays iChannel0 image with gamma correction",
+  "gamma": 2.2,
   "vertex": "@vertex\nfn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {\n    var out: VSOut;\n    let x = f32((vi & 1u) << 2u);\n    let y = f32((vi & 2u) << 1u);\n    out.pos = vec4<f32>(x - 1.0, 1.0 - y, 0.0, 1.0);\n    out.uv = vec2<f32>(x * 0.5, y * 0.5);\n    return out;\n}",
   "fragment": "@fragment\nfn fs_main(in: VSOut) -> @location(0) vec4<f32> {\n    // Sample the image from iChannel0\n    let color = textureSample(iChannel0, iChannel0Sampler, in.uv);\n    \n    // Apply gamma correction\n    let corrected = applyGamma(color.rgb, uniforms.gamma);\n    \n    return vec4<f32>(corrected, color.a);\n}",
   "buffer_a": "",

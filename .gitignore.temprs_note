@@ -1,0 +1,7 @@
+# Note: .temprs_reference/ is gitignored but contains important reference files
+# 
+# To sync TempRS reference with latest editor changes:
+#   cd .temprs_reference && ./SYNC_FROM_EDITOR.sh
+#
+# Then copy the synced files to your actual TempRS workspace.
+# See .temprs_reference/SHADER_SYNC.md for details.
