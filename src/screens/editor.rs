@@ -179,8 +179,8 @@ impl TopApp {
 
 impl eframe::App for TopApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Request continuous repainting for smooth audio visualization
-        ctx.request_repaint();
+        // Request repaint with 120 FPS cap (8.33ms per frame) to avoid hammering GPU
+        ctx.request_repaint_after(std::time::Duration::from_micros(8333));
 
         // Apply the theme every frame to prevent visual drift
         crate::utils::apply_editor_theme(ctx);

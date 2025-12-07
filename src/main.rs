@@ -36,6 +36,7 @@ fn main() {
 
     let mut native_options = NativeOptions {
         renderer: eframe::Renderer::Wgpu,
+        vsync: false,
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             // Use a custom error handler that logs instead of panicking
             on_surface_error: std::sync::Arc::new(|err| {
@@ -66,6 +67,7 @@ fn main() {
         vp = vp.with_position([pos.x, pos.y]);
     }
     native_options.viewport = vp;
+    native_options.persist_window = true;
 
     let result = eframe::run_native(
         "WebShard Editor",
