@@ -14,7 +14,6 @@ pub mod shader_json;
 pub mod shader_validator;
 pub mod text;
 pub mod theme;
-pub mod toast;  // DEPRECATED: Use notification module instead
 pub mod wgsl_syntax;
 
 pub use errors::{format_shader_error, ShaderError};
@@ -27,5 +26,3 @@ pub use shader_constants::*;
 pub use shader_json::ShaderJson;
 pub use shader_validator::validate_shader;
 pub use theme::apply_editor_theme;
-// DEPRECATED: toast module kept for backward compatibility only
-// Use NotificationManager from notification module instead

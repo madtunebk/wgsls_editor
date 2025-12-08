@@ -1,5 +1,6 @@
 use eframe::{egui, NativeOptions};
 
+mod compiler;
 mod funcs;
 mod screens;
 mod ui_components;

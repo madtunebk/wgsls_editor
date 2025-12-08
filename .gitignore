@@ -42,6 +42,9 @@ ARCHITECTURE.md
 REFACTORING_SUMMARY.md
 CHANGELOG.md
 
+# Old editor archive
+.oldeditor/
+
 # TempRS integration (separate repos)
 TempRS/
 .TMRS/

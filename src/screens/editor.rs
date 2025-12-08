@@ -1,15 +1,14 @@
 use eframe::egui;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::compiler::ShaderCompiler;
 use crate::screens::shader_buffer::ShaderBuffer;
 use crate::ui_components::{settings_menu, shader_properties};
 use crate::utils::{
-    catch_panic_mut, format_panic_message, format_shader_error, validate_shader, BufferKind,
-    MultiPassCallback, MultiPassPipelines, NotificationManager, ShaderError, ShaderJson,
-    DEFAULT_FONT_SIZE, DEFAULT_FRAGMENT, DEFAULT_VERTEX, SHADER_BOILERPLATE, STANDARD_VERTEX,
-    TEXTURE_BINDINGS, DEFAULT_BUFFER_RESOLUTION,
+    catch_panic_mut, format_panic_message, format_shader_error, BufferKind,
+    MultiPassCallback, NotificationManager, ShaderJson,
+    DEFAULT_FONT_SIZE, DEFAULT_VERTEX, STANDARD_VERTEX,
 };
 
 pub struct TopApp {
@@ -19,10 +18,8 @@ pub struct TopApp {
 
     saved_shaders: Option<HashMap<BufferKind, (String, String)>>,
 
-    // Multi-pass shader pipeline
-    shader_shared: Arc<Mutex<Option<Arc<MultiPassPipelines>>>>,
-    shader_needs_update: Arc<AtomicBool>,
-    last_error: Arc<Mutex<Option<ShaderError>>>,
+    // Shader compiler module
+    compiler: ShaderCompiler,
     target_format: Option<egui_wgpu::wgpu::TextureFormat>,
 
     // UI state
@@ -124,9 +121,7 @@ impl TopApp {
             current_buffer: BufferKind::MainImage,
             saved_shaders: None,
 
-            shader_shared: Arc::new(Mutex::new(None)),
-            shader_needs_update: Arc::new(AtomicBool::new(false)),
-            last_error: Arc::new(Mutex::new(None)),
+            compiler: ShaderCompiler::new(),
             target_format: None,
 
             editor_font_size: DEFAULT_FONT_SIZE,
@@ -161,21 +156,17 @@ impl TopApp {
 
         // Compile initial shader
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
-            let device = render_state.device.clone();
-            let queue = render_state.queue.clone();
             let format = render_state.target_format;
             app.target_format = Some(format);
 
-            let sources = app.get_all_buffer_sources();
-
-            match MultiPassPipelines::new(&device, &queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, &app.image_file_paths) {
-                Ok(pipeline) => {
-                    *app.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
-                }
-                Err(err) => {
-                    *app.last_error.lock().unwrap() = Some(err);
-                }
-            }
+            // Use compiler module for initial compilation
+            let _ = app.compiler.compile_if_needed(
+                &app.buffers,
+                &app.image_file_paths,
+                &render_state.device,
+                &render_state.queue,
+                format,
+            );
         }
 
         log::info!("TopApp initialization complete");
@@ -194,133 +185,28 @@ impl eframe::App for TopApp {
         // Handle keyboard shortcuts
         self.handle_input(ctx);
 
-        // Handle shader compilation if needed
-        if self.shader_needs_update.load(Ordering::Relaxed) {
-            log::debug!("Shader update requested, beginning multi-pass compilation");
-            self.shader_needs_update.store(false, Ordering::Relaxed);
-
-            if let Some(render_state) = frame.wgpu_render_state() {
-                let device = &render_state.device;
-                let queue = &render_state.queue;
-                let format = render_state.target_format;
-
-                // Build sources map for all buffers with auto-injected boilerplate
-                let mut sources = HashMap::with_capacity(5);
-                let mut validation_error: Option<ShaderError> = None;
-
-                for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
-                    let (vertex, fragment) = self.get_buffer_shaders(buffer_kind);
-                    let fragment_trimmed = fragment.trim();
-
-                    // Skip empty fragments (except MainImage which needs default)
-                    let has_code = fragment_trimmed.lines()
-                        .any(|line| {
-                            let trimmed_line = line.trim();
-                            !trimmed_line.is_empty() && !trimmed_line.starts_with("//")
-                        });
-
-                    if fragment_trimmed.is_empty() || !has_code {
-                        if buffer_kind == BufferKind::MainImage {
-                            // MainImage must exist, use default
-                            sources.insert(buffer_kind, format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT));
-                        }
-                        continue;
-                    }
-
-                    // Auto-inject boilerplate + standard vertex unless user provides custom vertex
-                    let vertex_trimmed = vertex.trim();
-                    let user_vertex = if vertex_trimmed.is_empty() || vertex_trimmed == DEFAULT_VERTEX.trim() {
-                        STANDARD_VERTEX
-                    } else {
-                        vertex_trimmed
-                    };
-
-                    // Build complete shader with conditional texture bindings
-                    // MainImage gets texture bindings to sample from buffers A-D
-                    // Buffer A-D do NOT get texture bindings (they're independent)
-                    let needs_textures = buffer_kind == BufferKind::MainImage;
-
-                    let mut complete_shader = String::with_capacity(
-                        SHADER_BOILERPLATE.len() + user_vertex.len() + fragment_trimmed.len() + 200
-                    );
-                    complete_shader.push_str(SHADER_BOILERPLATE);
-
-                    // Add texture bindings ONLY for MainImage
-                    // Layout matches multi_buffer_pipeline.rs bind group layout
-                    if needs_textures {
-                        complete_shader.push_str(TEXTURE_BINDINGS);
-                    }
-
-                    complete_shader.push('\n');
-                    complete_shader.push_str(user_vertex);
-                    complete_shader.push('\n');
-                    complete_shader.push_str(fragment_trimmed);
-
-                    // Validate the complete shader
-                    if let Err(e) = validate_shader(&complete_shader) {
-                        validation_error = Some(ShaderError::ValidationError(
-                            format!("[{:?}] {}", buffer_kind, e)
-                        ));
-                        break;
-                    }
-
-                    sources.insert(buffer_kind, complete_shader);
+        // Handle shader compilation if needed (using compiler module)
+        if let Some(render_state) = frame.wgpu_render_state() {
+            match self.compiler.compile_if_needed(
+                &self.buffers,
+                &self.image_file_paths,
+                &render_state.device,
+                &render_state.queue,
+                render_state.target_format,
+            ) {
+                Ok(true) => {
+                    // Success: pipeline compiled
+                    self.notification_mgr.dismiss_all();
+                    self.notification_mgr.success("Multi-pass shader compiled successfully!");
                 }
-
-                // Ensure MainImage exists
-                sources.entry(BufferKind::MainImage).or_insert_with(|| {
-                    format!("{}\n{}\n{}", SHADER_BOILERPLATE, STANDARD_VERTEX, DEFAULT_FRAGMENT)
-                });
-
-                // Check if validation failed
-                if let Some(err) = validation_error {
-                    *self.last_error.lock().unwrap() = Some(err.clone());
-                    let formatted = format_shader_error(&err);
-                    self.error_message = formatted.clone();
+                Err(err) => {
+                    // Compilation error
+                    let formatted = format_shader_error(err.error());
+                    self.error_message = formatted;
                     self.show_error_window = true;
-                    log::error!("[TopApp] Shader validation failed: {}", formatted);
-                    return;
                 }
-
-                log::debug!("[TopApp] Compiling multi-pass pipeline with {} buffers", sources.len());
-
-                // Wrap pipeline creation in panic catcher to prevent crashes
-                // Use catch_panic_mut since WGPU Device is not UnwindSafe
-                let result = catch_panic_mut(|| {
-                    MultiPassPipelines::new(device, queue, format, DEFAULT_BUFFER_RESOLUTION, &sources, &self.image_file_paths)
-                });
-
-                match result {
-                    Ok(Ok(pipeline)) => {
-                        // Success: pipeline created
-                        *self.shader_shared.lock().unwrap() = Some(Arc::new(pipeline));
-                        *self.last_error.lock().unwrap() = None;
-                        self.notification_mgr.dismiss_all();
-                        self.notification_mgr.success("Multi-pass shader compiled successfully!");
-                        log::info!("[TopApp] Multi-pass shader compiled successfully");
-                    }
-                    Ok(Err(err)) => {
-                        // Expected error: shader compilation/validation error
-                        *self.last_error.lock().unwrap() = Some(err.clone());
-                        let formatted = format_shader_error(&err);
-
-                        self.error_message = formatted.clone();
-                        self.show_error_window = true;
-
-                        log::error!("[TopApp] Shader compilation failed: {}", formatted);
-                    }
-                    Err(panic_msg) => {
-                        // Caught panic: WGPU validation error or internal panic
-                        let formatted = format_panic_message(&panic_msg);
-                        let error = ShaderError::CompilationError(formatted.clone());
-
-                        *self.last_error.lock().unwrap() = Some(error);
-                        self.error_message = formatted.clone();
-                        self.show_error_window = true;
-                        self.notification_mgr.error("Pipeline creation panicked - see error window");
-
-                        log::error!("[TopApp] Pipeline creation panicked: {}", panic_msg);
-                    }
+                Ok(false) => {
+                    // No compilation needed
                 }
             }
         }
@@ -705,28 +591,11 @@ impl TopApp {
         }
     }
 
-    fn get_buffer_shaders(&self, buffer: BufferKind) -> (&str, &str) {
-        self.buffers
-            .get(&buffer)
-            .map(|b| b.get_shaders())
-            .unwrap_or(("", ""))
-    }
-
-    fn get_all_buffer_sources(&self) -> HashMap<BufferKind, String> {
-        let mut sources = HashMap::with_capacity(5);
-        for buffer_kind in [BufferKind::MainImage, BufferKind::BufferA, BufferKind::BufferB, BufferKind::BufferC, BufferKind::BufferD] {
-            let (vertex, fragment) = self.get_buffer_shaders(buffer_kind);
-            let combined = format!("{}\n\n{}", vertex.trim(), fragment.trim());
-            sources.insert(buffer_kind, combined);
-        }
-        sources
-    }
-
     fn render_shader_preview(&mut self, ui: &mut egui::Ui) {
         let size = ui.available_size();
         let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
 
-        if let Some(pipeline_arc) = self.shader_shared.lock().unwrap().as_ref() {
+        if let Some(pipeline_arc) = self.compiler.pipeline().lock().unwrap().as_ref() {
             if self.debug_audio {
                 *self.bass_energy.lock().unwrap() = self.debug_bass;
                 *self.mid_energy.lock().unwrap() = self.debug_mid;
@@ -892,7 +761,7 @@ impl TopApp {
         self.image_file_paths[channel] = Some(path.clone());
 
         // Trigger shader recompilation to load the new image texture
-        self.shader_needs_update.store(true, Ordering::Relaxed);
+        self.compiler.trigger_compilation();
 
         self.notification_mgr.success(format!(
             "Image loaded to iChannel{}: {}",
@@ -961,8 +830,7 @@ impl TopApp {
 
     fn apply_shader(&mut self) {
         log::info!("Apply shader requested - compiling all buffers");
-        self.shader_needs_update.store(true, Ordering::Relaxed);
-        *self.last_error.lock().unwrap() = None;
+        self.compiler.trigger_compilation();
         self.notification_mgr.dismiss_all();
     }
 
