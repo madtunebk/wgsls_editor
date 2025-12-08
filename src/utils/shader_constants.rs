@@ -19,7 +19,26 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
 /// Default fragment shader code (simple gradient for fallback)
 pub const DEFAULT_FRAGMENT: &str = r#"@fragment
 fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.uv.x, in.uv.y, 0.5, 1.0);
+    let uv = in.uv;
+    let t = uniforms.time;
+    
+    // Create a colorful gradient
+    var color = vec3<f32>(
+        0.5 + 0.5 * sin(uv.x * 10.0 + t),
+        0.5 + 0.5 * cos(uv.y * 10.0 + t),
+        0.5 + 0.5 * sin((uv.x + uv.y) * 5.0 + t)
+    );
+    
+    // Apply contrast
+    color = applyContrast(color, uniforms.contrast);
+    
+    // Apply saturation
+    color = applySaturation(color, uniforms.saturation);
+    
+    // Apply gamma correction
+    color = applyGamma(color, uniforms.gamma);
+    
+    return vec4<f32>(color, 1.0);
 }
 "#;
 
@@ -37,6 +56,8 @@ struct Uniforms {
     audio_high: f32,
     resolution: vec2<f32>,
     gamma: f32,
+    contrast: f32,
+    saturation: f32,
     _pad0: f32,
 }
 
@@ -77,6 +98,17 @@ var iChannel3Sampler: sampler;
 // Gamma correction helper function
 fn applyGamma(color: vec3<f32>, gamma: f32) -> vec3<f32> {
     return pow(color, vec3<f32>(1.0 / gamma));
+}
+
+// Contrast adjustment helper function
+fn applyContrast(color: vec3<f32>, contrast: f32) -> vec3<f32> {
+    return (color - 0.5) * contrast + 0.5;
+}
+
+// Saturation adjustment helper function
+fn applySaturation(color: vec3<f32>, saturation: f32) -> vec3<f32> {
+    let luminance = dot(color, vec3<f32>(0.299, 0.587, 0.114));
+    return mix(vec3<f32>(luminance), color, saturation);
 }
 "#;
 

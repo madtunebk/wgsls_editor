@@ -9,7 +9,7 @@ use crate::utils::{
     catch_panic_mut, format_panic_message, format_shader_error, validate_shader, BufferKind,
     MultiPassCallback, MultiPassPipelines, NotificationManager, ShaderError, ShaderJson,
     DEFAULT_FONT_SIZE, DEFAULT_FRAGMENT, DEFAULT_VERTEX, SHADER_BOILERPLATE, STANDARD_VERTEX,
-    DEFAULT_BUFFER_RESOLUTION,
+    TEXTURE_BINDINGS, DEFAULT_BUFFER_RESOLUTION,
 };
 
 pub struct TopApp {
@@ -31,6 +31,7 @@ pub struct TopApp {
     show_error_window: bool,
     error_message: String,
     show_preset_menu: bool,
+    show_presets_window: bool,
 
     // Audio - FFT energy values
     bass_energy: Arc<Mutex<f32>>,
@@ -44,8 +45,10 @@ pub struct TopApp {
     image_file_paths: [Option<String>; 4], // Support up to 4 image channels (iChannel0-3)
     selected_image_channel: usize, // Which channel to load next image into (0-3)
 
-    // Gamma correction
+    // Rendering adjustments
     gamma: Arc<Mutex<f32>>,
+    contrast: Arc<Mutex<f32>>,
+    saturation: Arc<Mutex<f32>>,
 
     // Notifications
     notification_mgr: NotificationManager,
@@ -131,6 +134,7 @@ impl TopApp {
             show_error_window: false,
             error_message: String::new(),
             show_preset_menu: false,
+            show_presets_window: false,
 
             bass_energy: Arc::new(Mutex::new(0.0)),
             mid_energy: Arc::new(Mutex::new(0.0)),
@@ -144,6 +148,8 @@ impl TopApp {
             selected_image_channel: 0,
 
             gamma: Arc::new(Mutex::new(1.0)),  // Default: no gamma correction (matches player)
+            contrast: Arc::new(Mutex::new(1.0)),  // Default: normal contrast
+            saturation: Arc::new(Mutex::new(1.0)),  // Default: normal saturation
 
             notification_mgr: NotificationManager::default(),
 
@@ -240,21 +246,9 @@ impl eframe::App for TopApp {
                     complete_shader.push_str(SHADER_BOILERPLATE);
 
                     // Add texture bindings ONLY for MainImage
-                    // Layout matches multi_buffer_pipeline.rs bind group layout:
-                    // Buffer A: texture @0, sampler @1
-                    // Buffer B: texture @2, sampler @3
-                    // Buffer C: texture @4, sampler @5
-                    // Buffer D: texture @6, sampler @7
+                    // Layout matches multi_buffer_pipeline.rs bind group layout
                     if needs_textures {
-                        complete_shader.push_str("\n// Multi-pass texture bindings\n");
-                        complete_shader.push_str("@group(1) @binding(0) var buffer_a_texture: texture_2d<f32>;\n");
-                        complete_shader.push_str("@group(1) @binding(1) var buffer_a_sampler: sampler;\n");
-                        complete_shader.push_str("@group(1) @binding(2) var buffer_b_texture: texture_2d<f32>;\n");
-                        complete_shader.push_str("@group(1) @binding(3) var buffer_b_sampler: sampler;\n");
-                        complete_shader.push_str("@group(1) @binding(4) var buffer_c_texture: texture_2d<f32>;\n");
-                        complete_shader.push_str("@group(1) @binding(5) var buffer_c_sampler: sampler;\n");
-                        complete_shader.push_str("@group(1) @binding(6) var buffer_d_texture: texture_2d<f32>;\n");
-                        complete_shader.push_str("@group(1) @binding(7) var buffer_d_sampler: sampler;\n");
+                        complete_shader.push_str(TEXTURE_BINDINGS);
                     }
 
                     complete_shader.push('\n');
@@ -355,10 +349,17 @@ impl eframe::App for TopApp {
             &mut self.show_settings,
             &mut self.editor_font_size,
             &self.gamma,
+            &self.contrast,
+            &self.saturation,
         );
         // Font size changes propagated automatically - no need to update individual tabs
         if (self.editor_font_size - old_font_size).abs() > 0.01 {
             log::debug!("Font size changed to {}", self.editor_font_size);
+        }
+
+        // Shader Presets window
+        if self.show_presets_window {
+            self.render_presets_window(ctx);
         }
 
         // Shader Properties window
@@ -514,22 +515,14 @@ impl TopApp {
 
                     // Floating buttons
                     let gear_size = 32.0;
-                    let gear_pos = egui::pos2(
-                        editor_rect.right() - gear_size - 8.0,
-                        editor_rect.top() + 8.0,
-                    );
-                    let gear_rect = egui::Rect::from_min_size(
-                        gear_pos,
-                        egui::vec2(gear_size, gear_size),
-                    );
 
                     let is_hovered =
                         editor_rect.contains(ctx.pointer_hover_pos().unwrap_or_default());
-                    if is_hovered || self.show_settings || self.show_preset_menu {
-                        // Presets button
+                    if is_hovered || self.show_settings || self.show_preset_menu || self.show_presets_window {
+                        // Presets button (top)
                         let preset_pos = egui::pos2(
                             editor_rect.right() - gear_size - 8.0,
-                            editor_rect.top() + gear_size + 16.0,
+                            editor_rect.top() + 8.0,
                         );
                         let preset_rect = egui::Rect::from_min_size(
                             preset_pos,
@@ -539,28 +532,62 @@ impl TopApp {
                         let preset_response = ui.put(
                             preset_rect,
                             egui::Button::new(
-                                egui::RichText::new("📁").size(16.0),
+                                egui::RichText::new("📋").size(16.0),
                             )
                             .frame(true),
                         );
 
                         if preset_response
-                            .on_hover_text("Shader Properties (Presets & Audio)")
+                            .on_hover_text("Shader Presets")
+                            .clicked()
+                        {
+                            self.show_presets_window = !self.show_presets_window;
+                        }
+
+                        // Properties button (middle)
+                        let properties_pos = egui::pos2(
+                            editor_rect.right() - gear_size - 8.0,
+                            editor_rect.top() + gear_size + 16.0,
+                        );
+                        let properties_rect = egui::Rect::from_min_size(
+                            properties_pos,
+                            egui::vec2(gear_size, gear_size),
+                        );
+
+                        let properties_response = ui.put(
+                            properties_rect,
+                            egui::Button::new(
+                                egui::RichText::new("📁").size(16.0),
+                            )
+                            .frame(true),
+                        );
+
+                        if properties_response
+                            .on_hover_text("Shader Properties (Audio & Images)")
                             .clicked()
                         {
                             self.show_preset_menu = !self.show_preset_menu;
                         }
 
-                        // Settings gear button
-                        let gear_response = ui.put(
-                            gear_rect,
+                        // Settings gear button (bottom)
+                        let settings_pos = egui::pos2(
+                            editor_rect.right() - gear_size - 8.0,
+                            editor_rect.top() + (gear_size + 8.0) * 2.0 + 8.0,
+                        );
+                        let settings_rect = egui::Rect::from_min_size(
+                            settings_pos,
+                            egui::vec2(gear_size, gear_size),
+                        );
+
+                        let settings_response = ui.put(
+                            settings_rect,
                             egui::Button::new(
                                 egui::RichText::new("⚙").size(16.0),
                             )
                             .frame(true),
                         );
 
-                        if gear_response
+                        if settings_response
                             .on_hover_text("Settings (Editor)")
                             .clicked()
                         {
@@ -614,6 +641,70 @@ impl TopApp {
         }
     }
 
+    fn render_presets_window(&mut self, ctx: &egui::Context) {
+        let mut preset_to_load: Option<&str> = None;
+
+        egui::Window::new("📋 Shader Presets")
+            .id(egui::Id::new("shader_presets_window"))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .resizable(false)
+            .collapsible(false)
+            .default_size([380.0, 0.0])
+            .open(&mut self.show_presets_window)
+            .show(ctx, |ui| {
+                ui.set_min_width(360.0);
+                ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+
+                ui.label(egui::RichText::new("Choose a preset shader:").size(13.0).weak());
+                ui.add_space(8.0);
+
+                let button_size = egui::vec2(ui.available_width(), 36.0);
+
+                if ui.add_sized(button_size, egui::Button::new(
+                    egui::RichText::new("🎵 Default (Audio Visualizer)").size(14.0)
+                )).clicked() {
+                    preset_to_load = Some("default");
+                }
+
+                if ui.add_sized(button_size, egui::Button::new(
+                    egui::RichText::new("🌀 Psychedelic Spiral").size(14.0)
+                )).clicked() {
+                    preset_to_load = Some("psychedelic");
+                }
+
+                if ui.add_sized(button_size, egui::Button::new(
+                    egui::RichText::new("🌌 Infinite Tunnel").size(14.0)
+                )).clicked() {
+                    preset_to_load = Some("tunnel");
+                }
+
+                if ui.add_sized(button_size, egui::Button::new(
+                    egui::RichText::new("📦 Raymarched Boxes").size(14.0)
+                )).clicked() {
+                    preset_to_load = Some("raymarch");
+                }
+
+                if ui.add_sized(button_size, egui::Button::new(
+                    egui::RichText::new("🔮 Julia Set Fractal").size(14.0)
+                )).clicked() {
+                    preset_to_load = Some("fractal");
+                }
+
+                if ui.add_sized(button_size, egui::Button::new(
+                    egui::RichText::new("🖼️  Image Demo").size(14.0)
+                )).clicked() {
+                    preset_to_load = Some("image_demo");
+                }
+
+                ui.add_space(8.0);
+            });
+
+        if let Some(preset) = preset_to_load {
+            self.load_preset_shader(preset);
+            self.show_presets_window = false;
+        }
+    }
+
     fn get_buffer_shaders(&self, buffer: BufferKind) -> (&str, &str) {
         self.buffers
             .get(&buffer)
@@ -648,6 +739,8 @@ impl TopApp {
                 mid_energy: self.mid_energy.clone(),
                 high_energy: self.high_energy.clone(),
                 gamma: self.gamma.clone(),
+                contrast: self.contrast.clone(),
+                saturation: self.saturation.clone(),
             };
 
             ui.painter()
@@ -1080,6 +1173,18 @@ impl TopApp {
             *self.gamma.lock().unwrap() = gamma_value;
             log::info!("Loaded gamma correction: {}", gamma_value);
         }
+        
+        // Load contrast value
+        if let Some(contrast_value) = shader_json.contrast {
+            *self.contrast.lock().unwrap() = contrast_value;
+            log::info!("Loaded contrast: {}", contrast_value);
+        }
+        
+        // Load saturation value
+        if let Some(saturation_value) = shader_json.saturation {
+            *self.saturation.lock().unwrap() = saturation_value;
+            log::info!("Loaded saturation: {}", saturation_value);
+        }
 
         // Apply the shader pipeline
         self.apply_shader();
@@ -1191,6 +1296,14 @@ impl TopApp {
         // Add gamma correction value
         let gamma_value = *self.gamma.lock().unwrap();
         shader_json["gamma"] = json!(gamma_value);
+        
+        // Add contrast value
+        let contrast_value = *self.contrast.lock().unwrap();
+        shader_json["contrast"] = json!(contrast_value);
+        
+        // Add saturation value
+        let saturation_value = *self.saturation.lock().unwrap();
+        shader_json["saturation"] = json!(saturation_value);
 
         // Serialize to pretty JSON
         let json_content = match serde_json::to_string_pretty(&shader_json) {

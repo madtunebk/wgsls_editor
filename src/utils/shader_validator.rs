@@ -87,7 +87,7 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
     // Check if shader defines a Uniforms struct
     if !wgsl_src.contains("struct Uniforms") {
         return Err(ShaderError::ValidationError(
-            "Shader must define a 'struct Uniforms' matching the pipeline structure.\n\nExpected:\nstruct Uniforms {\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    gamma: f32,\n    _pad0: f32,\n}".to_string()
+            "Shader must define a 'struct Uniforms' matching the pipeline structure.\n\nExpected:\nstruct Uniforms {\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    gamma: f32,\n    contrast: f32,\n    saturation: f32,\n    _pad0: f32,\n}".to_string()
         ));
     }
     
@@ -98,7 +98,7 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
             if let Some(end_brace) = wgsl_src[start_brace..].find('}') {
                 let struct_body = &wgsl_src[start_brace + 1..start_brace + end_brace];
                 
-                // Check required fields only (gamma is optional for backward compatibility)
+                // Check required fields only (gamma, contrast, saturation are optional for backward compatibility)
                 for field in &required_fields {
                     if !struct_body.contains(field) {
                         return Err(ShaderError::ValidationError(format!(
@@ -108,11 +108,15 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
                     }
                 }
                 
-                // Validate padding format (either old or new is fine)
-                let has_new_format = struct_body.contains("gamma: f32") && struct_body.contains("_pad0: f32");
+                // Validate padding format (multiple formats for backward compatibility)
+                let has_new_format = struct_body.contains("gamma: f32") && 
+                                    struct_body.contains("contrast: f32") && 
+                                    struct_body.contains("saturation: f32") && 
+                                    struct_body.contains("_pad0: f32");
+                let has_gamma_only = struct_body.contains("gamma: f32") && struct_body.contains("_pad0: f32");
                 let has_old_format = struct_body.contains("_pad0: vec2<f32>");
                 
-                if !has_new_format && !has_old_format {
+                if !has_new_format && !has_gamma_only && !has_old_format {
                     log::warn!("Shader uses non-standard padding format - this may cause issues");
                 }
             }

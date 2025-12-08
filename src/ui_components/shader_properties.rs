@@ -41,59 +41,6 @@ pub fn render(
             ui.set_min_width(400.0);
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
 
-            // Presets Section with styled frame
-            ui.push_id("shader_presets_section", |ui| {
-            egui::Frame::group(ui.style())
-                .fill(egui::Color32::from_rgb(25, 25, 30))
-                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70)))
-                .corner_radius(6.0)
-                .inner_margin(12.0)
-                .show(ui, |ui| {
-                    ui.label(egui::RichText::new("Shader Presets").size(16.0).strong());
-                    ui.add_space(8.0);
-
-                    let button_size = egui::vec2(ui.available_width(), 32.0);
-
-                    if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("Default (Audio Visualizer)").size(13.0)
-                    )).clicked() {
-                        action = ShaderPropertiesAction::LoadPreset("default".to_string());
-                    }
-
-                    if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("Psychedelic Spiral").size(13.0)
-                    )).clicked() {
-                        action = ShaderPropertiesAction::LoadPreset("psychedelic".to_string());
-                    }
-
-                    if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("Infinite Tunnel").size(13.0)
-                    )).clicked() {
-                        action = ShaderPropertiesAction::LoadPreset("tunnel".to_string());
-                    }
-
-                    if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("Raymarched Boxes").size(13.0)
-                    )).clicked() {
-                        action = ShaderPropertiesAction::LoadPreset("raymarch".to_string());
-                    }
-
-                    if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("Julia Set Fractal").size(13.0)
-                    )).clicked() {
-                        action = ShaderPropertiesAction::LoadPreset("fractal".to_string());
-                    }
-
-                    if ui.add_sized(button_size, egui::Button::new(
-                        egui::RichText::new("Image Demo").size(13.0)
-                    )).clicked() {
-                        action = ShaderPropertiesAction::LoadPreset("image_demo".to_string());
-                    }
-                });
-            });
-
-            ui.add_space(12.0);
-
             // Audio Section with styled frame
             ui.push_id("audio_section", |ui| {
             egui::Frame::group(ui.style())

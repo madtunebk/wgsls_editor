@@ -869,6 +869,8 @@ pub struct MultiPassCallback {
     pub mid_energy: Arc<std::sync::Mutex<f32>>,
     pub high_energy: Arc<std::sync::Mutex<f32>>,
     pub gamma: Arc<std::sync::Mutex<f32>>,
+    pub contrast: Arc<std::sync::Mutex<f32>>,
+    pub saturation: Arc<std::sync::Mutex<f32>>,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
@@ -891,6 +893,14 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
         let mid = *self.mid_energy.lock().unwrap();
         let high = *self.high_energy.lock().unwrap();
         let gamma = *self.gamma.lock().unwrap();
+        let contrast = *self.contrast.lock().unwrap();
+        let saturation = *self.saturation.lock().unwrap();
+
+        // Debug log every 60 frames (about once per second at 60fps)
+        static FRAME_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        if FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 60 == 0 {
+            log::debug!("Uniforms: gamma={:.2}, contrast={:.2}, saturation={:.2}", gamma, contrast, saturation);
+        }
 
         let uniforms = ShaderUniforms {
             time: elapsed,
@@ -899,6 +909,8 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
             audio_high: high,
             resolution,
             gamma,
+            contrast,
+            saturation,
             _pad0: 0.0,
         };
 

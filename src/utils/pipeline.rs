@@ -16,6 +16,8 @@ pub struct ShaderUniforms {
     pub audio_high: f32,
     pub resolution: [f32; 2],
     pub gamma: f32,
+    pub contrast: f32,
+    pub saturation: f32,
     pub _pad0: f32,  // Padding for alignment
 }
 
@@ -158,6 +160,8 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
             audio_high: high,
             resolution,
             gamma: 1.0,  // No gamma correction by default
+            contrast: 1.0,  // Default contrast
+            saturation: 1.0,  // Default saturation
             _pad0: 0.0,
         };
 

@@ -51,6 +51,14 @@ pub struct ShaderJson {
     /// Gamma correction value (default: 1.0 = no correction)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gamma: Option<f32>,
+    
+    /// Contrast adjustment (default: 1.0 = normal)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contrast: Option<f32>,
+    
+    /// Saturation adjustment (default: 1.0 = normal)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saturation: Option<f32>,
 }
 
 fn default_version() -> String {
