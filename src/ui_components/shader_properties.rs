@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 
 /// Actions that can be triggered from the Shader Properties window
 pub enum ShaderPropertiesAction {
-    LoadPreset(String),
     LoadAudioFile(String),
     LoadImageFile(usize, String), // (channel_index, file_path)
     ExportShard,

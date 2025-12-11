@@ -266,9 +266,6 @@ impl eframe::App for TopApp {
             );
 
             match action {
-                shader_properties::ShaderPropertiesAction::LoadPreset(name) => {
-                    self.load_preset_shader(&name);
-                }
                 shader_properties::ShaderPropertiesAction::LoadAudioFile(path) => {
                     self.load_audio_file(path);
                 }

@@ -37,25 +37,10 @@ impl ShaderCompiler {
         self.pipeline.clone()
     }
 
-    /// Get shared reference to the last error
-    pub fn last_error(&self) -> Arc<Mutex<Option<ShaderError>>> {
-        self.last_error.clone()
-    }
-
-    /// Get shared reference to the needs_update flag
-    pub fn needs_update_flag(&self) -> Arc<AtomicBool> {
-        self.needs_update.clone()
-    }
-
     /// Trigger shader recompilation
     pub fn trigger_compilation(&self) {
         self.needs_update.store(true, Ordering::Relaxed);
         *self.last_error.lock().unwrap() = None;
-    }
-
-    /// Check if compilation is pending
-    pub fn compilation_pending(&self) -> bool {
-        self.needs_update.load(Ordering::Relaxed)
     }
 
     /// Compile shaders if update is pending
