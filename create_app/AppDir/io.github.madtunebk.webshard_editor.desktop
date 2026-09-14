@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=WebShard Editor
+Exec=webshard_editor
+Icon=webshard_editor
+Categories=Development;3DGraphics;
+Terminal=false
