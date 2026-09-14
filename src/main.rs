@@ -6,6 +6,20 @@ mod screens;
 mod ui_components;
 mod utils;
 
+fn load_app_icon() -> Option<std::sync::Arc<egui::IconData>> {
+    const ICON_BYTES: &[u8] = include_bytes!("assets/logo.png");
+    let image = image::load_from_memory(ICON_BYTES)
+        .map_err(|e| log::error!("Failed to load app icon: {}", e))
+        .ok()?
+        .into_rgba8();
+    let (width, height) = image.dimensions();
+    Some(std::sync::Arc::new(egui::IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    }))
+}
+
 fn main() {
     // Initialize logging
     env_logger::Builder::from_default_env()
@@ -66,6 +80,9 @@ fn main() {
     let mut vp = egui::ViewportBuilder::default().with_inner_size([window_size.x, window_size.y]);
     if let Some(pos) = window_pos {
         vp = vp.with_position([pos.x, pos.y]);
+    }
+    if let Some(icon) = load_app_icon() {
+        vp = vp.with_icon(icon);
     }
     native_options.viewport = vp;
     native_options.persist_window = true;
